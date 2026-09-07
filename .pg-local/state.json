@@ -1,5 +1,0 @@
-{
-  "port": 55432,
-  "db": "codwsap",
-  "url": "postgresql://postgres:postgres@127.0.0.1:55432/codwsap"
-}

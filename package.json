@@ -14,11 +14,11 @@
     "pg:start": "tsx scripts/pg-local.ts start",
     "seed": "tsx --conditions=react-server scripts/seed.ts",
     "test:isolation": "tsx --conditions=react-server scripts/run-isolation-suite.ts",
-    "verify": "npm run typecheck && npm run lint && npm run build"
+    "verify": "npm run typecheck && npm run lint && npm run build",
+    "admin:create": "tsx --conditions=react-server scripts/create-admin.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "jose": "^6.2.12",
@@ -31,6 +31,7 @@
     "server-only": "^0.0.1",
     "swr": "^2.5.1",
     "tailwind-merge": "^3.6.0",
+    "tsx": "^4.23.13",
     "zod": "^4.5.4"
   },
   "devDependencies": {
@@ -46,8 +47,9 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.25",
     "tailwindcss": "^4",
-    "ts-morph": "^28.0.0",
-    "tsx": "^4.23.13",
     "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^13.0.3"
   }
 }

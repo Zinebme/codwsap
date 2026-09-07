@@ -1,1 +1,0 @@
-/home/user/codwsap/node_modules/@embedded-postgres/linux-x64/native/bin/postgres "-D" "/home/user/codwsap/.pg-local/data" "-p" "55432"

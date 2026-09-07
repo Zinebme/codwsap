@@ -156,11 +156,20 @@ let _sqlite: SqliteDb | null = null;
 
 async function sqlite(): Promise<SqliteDb> {
   if (_sqlite) return _sqlite;
-  const [{ default: Database }, fs, path] = await Promise.all([
-    import("better-sqlite3"),
-    import("node:fs"),
-    import("node:path"),
-  ]);
+  // better-sqlite3 est une dépendance OPTIONNELLE (module natif) : le mode
+  // SQLite ne sert qu'au développement local. En staging/production
+  // (DB_DRIVER=postgres) il n'est jamais chargé, donc un échec de compilation
+  // native ne peut pas casser le déploiement.
+  let Database: new (file: string) => unknown;
+  try {
+    Database = (await import("better-sqlite3")).default as never;
+  } catch {
+    throw new Error(
+      "Le driver SQLite (better-sqlite3) n'est pas installé. " +
+        "Définissez DATABASE_URL et DB_DRIVER=postgres, ou installez les dépendances optionnelles pour le développement local.",
+    );
+  }
+  const [fs, path] = await Promise.all([import("node:fs"), import("node:path")]);
   const file = process.env.DATABASE_FILE || path.join(process.cwd(), "data", "codwsap.db");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const instance = new Database(file) as unknown as SqliteDb;
