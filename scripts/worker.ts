@@ -1,19 +1,27 @@
 /**
- * Worker de tâches de fond CODWSAP (service séparé du web).
+ * Worker de fond en processus permanent — OPTIONNEL.
+ *
+ * En production sur Vercel, ce script n'est PAS utilisé : le traitement de fond
+ * passe par la route planifiée `/api/cron`, appelée par Supabase Cron
+ * (voir docs/DEPLOYMENT_VERCEL_SUPABASE.md). Aucun processus permanent n'est
+ * requis.
+ *
+ * Il reste utile dans deux cas :
+ *   - développement local, pour traiter la file en continu sans planificateur ;
+ *   - auto-hébergement sur une plateforme acceptant un processus long-vécu.
  *
  *   npm run worker
  *
  * File d'attente : table `jobs` PostgreSQL, réclamée avec
- * `FOR UPDATE SKIP LOCKED` — plusieurs répliques peuvent tourner en parallèle
- * sans traiter deux fois la même tâche. Pas de Redis requis pour la V1 (voir
- * docs/DEPLOYMENT.md : Redis reste optionnel et n'est utile qu'au-delà du
- * volume géré confortablement par Postgres).
+ * `FOR UPDATE SKIP LOCKED` — plusieurs répliques peuvent tourner en parallèle,
+ * et cohabiter avec les appels à `/api/cron`, sans traiter deux fois la même
+ * tâche. Pas de Redis.
  *
  * Réessais : bornés (3 tentatives par défaut) avec backoff, puis passage en
  * `failed` + notification. Jamais de boucle de réessai infinie.
  *
- * Santé : sonde HTTP sur WORKER_HEALTH_PORT (défaut 3001) pour le healthcheck
- * Railway. 200 si la boucle tourne et que la base répond, 503 sinon.
+ * Santé : sonde HTTP sur WORKER_HEALTH_PORT (défaut 3001).
+ * 200 si la boucle tourne et que la base répond, 503 sinon.
  */
 import http from "node:http";
 import { runWorker, workerHealth } from "../src/server/jobs/worker";
@@ -32,7 +40,7 @@ let stopping = false;
 let totals = { processed: 0, failed: 0, cycles: 0 };
 
 function log(level: "info" | "warn" | "error", msg: string, extra: Record<string, unknown> = {}) {
-  // Log structuré : exploitable tel quel par les collecteurs de Railway.
+  // Log structuré : directement exploitable par un collecteur de logs.
   console[level === "info" ? "log" : level](
     JSON.stringify({ ts: new Date().toISOString(), level, service: "worker", msg, ...extra }),
   );

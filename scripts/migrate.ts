@@ -17,11 +17,25 @@ const DIR = path.join(process.cwd(), "supabase", "migrations");
 const LOCK_KEY = 918_273_645;
 
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
+  // Les migrations exigent une connexion SESSION (directe), pas le pooler
+  // transactionnel : elles utilisent des verrous consultatifs qui doivent
+  // survivre entre plusieurs requêtes, ce que le mode transaction ne garantit
+  // pas. Sur Supabase, MIGRATION_DATABASE_URL = connexion directe (port 5432),
+  // DATABASE_URL = pooler transactionnel (port 6543).
+  const connectionString = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error("DATABASE_URL est requis pour exécuter les migrations.");
+    console.error("MIGRATION_DATABASE_URL (ou à défaut DATABASE_URL) est requis pour exécuter les migrations.");
     process.exit(1);
   }
+
+  const usingPooler = /[:.]6543|pgbouncer=true/.test(connectionString);
+  if (usingPooler) {
+    console.warn(
+      "Attention : l'URL de migration semble pointer vers le pooler transactionnel (6543).\n" +
+        "Utilisez la connexion directe/session (5432) via MIGRATION_DATABASE_URL.",
+    );
+  }
+  console.log(`Cible : ${connectionString.replace(/:[^:@/]+@/, ":****@")}`);
 
   const needsSsl =
     process.env.PGSSL === "require" ||

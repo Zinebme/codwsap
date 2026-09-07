@@ -15,6 +15,7 @@ import { startLocalPg } from "./pg-local";
 const PORT = Number(process.env.TEST_PORT ?? 3210);
 const TEST_PASSWORD = "Test-Isolation-2026-xY7";
 const TENANT_PASSWORD = "tenant-test-pw";
+const CRON_SECRET = "test-cron-secret-2026";
 
 function sh(cmd: string, env: Record<string, string>) {
   execSync(cmd, { stdio: "inherit", env: { ...process.env, ...env }, cwd: process.cwd() });
@@ -122,6 +123,7 @@ async function main() {
         DB_DRIVER: "postgres",
         APP_ENV: "test",
         NODE_ENV: "production",
+        CRON_SECRET,
         PORT: String(PORT),
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -139,6 +141,7 @@ async function main() {
       TENANT_DATABASE_URL: tenantUrl,
       TEST_BASE_URL: `http://127.0.0.1:${PORT}`,
       TEST_PASSWORD,
+      TEST_CRON_SECRET: CRON_SECRET,
     });
   } catch (e) {
     exitCode = 1;

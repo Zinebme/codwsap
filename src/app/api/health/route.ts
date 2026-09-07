@@ -3,7 +3,7 @@ import { get, activeDriver } from "@/server/db";
 export const dynamic = "force-dynamic";
 
 /**
- * Sonde de santé publique (Railway healthcheckPath, supervision externe).
+ * Sonde de santé publique (supervision externe, vérification post-déploiement).
  *
  * Volontairement minimaliste : elle confirme que le process répond ET que la
  * base est joignable, sans divulguer ni version, ni schéma, ni configuration.

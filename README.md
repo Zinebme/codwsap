@@ -8,23 +8,42 @@ conversations centralisées et statistiques opérationnelles.
 - **Dashboard marchand** : français **et** arabe avec support RTL
 - **Console super admin** (`/admin`) : français uniquement
 
-## Démarrage
+## Démarrage (développement local)
 
 ```bash
 npm install
-cp .env.example .env.local     # puis générer les clés: openssl rand -hex 32
-npm run seed                   # données de démonstration
+cp .env.example .env.local     # puis générer les clés : openssl rand -hex 32
+npm run seed                   # données de démonstration (dev/test uniquement)
 npm run dev                    # http://localhost:3000
-npm run worker                 # boucle de traitement en arrière-plan (autre terminal)
+npm run worker                 # optionnel : traitement de fond en continu
 ```
 
-Comptes créés par le seed (mot de passe `codwsap2026`) :
+Le seed crée **deux marchands** (nécessaires aux tests d'isolation) et affiche
+un mot de passe **généré aléatoirement, une seule fois**. Il n'y a plus
+d'identifiants prévisibles, et il **refuse de s'exécuter** lorsque `APP_ENV`
+vaut `staging` ou `production`.
 
-| Rôle | Email |
-| --- | --- |
-| Super admin | `admin@codwsap.app` |
-| Propriétaire marchand | `demo@codwsap.app` |
-| Agent | `agent@codwsap.app` |
+Aucun compte super administrateur n'est créé automatiquement :
+
+```bash
+npm run admin:create -- --email vous@domaine.tld
+```
+
+## Déploiement
+
+Cible supportée : **Vercel** (web/API/webhooks) + **Supabase** (PostgreSQL/RLS)
++ **Supabase Cron** (traitement de fond planifié via `/api/cron`).
+Aucun processus worker permanent n'est requis.
+
+→ Guide complet : [`docs/DEPLOYMENT_VERCEL_SUPABASE.md`](docs/DEPLOYMENT_VERCEL_SUPABASE.md)
+→ Variables : [`.env.vercel.example`](.env.vercel.example)
+
+## Tests
+
+```bash
+npm run verify           # types + lint + build
+npm run test:isolation   # 37 tests d'isolation et de sécurité, PostgreSQL réel
+```
 
 ## Variables d'environnement
 
@@ -61,7 +80,7 @@ src/
   components/           UI kit, shells dashboard et marketing
   lib/                  domaine (statuts, wilayas), i18n, normalisation téléphone
 supabase/migrations/    migrations Postgres + RLS pour le déploiement
-scripts/                seed et worker
+scripts/                seed, migrations, worker, tests d'isolation
 ```
 
 ### Multi-tenant et sécurité

@@ -6,7 +6,7 @@
  *   npm run pg:stop    -> arrête
  *
  * Ce n'est PAS le chemin de production : en staging/production, DATABASE_URL
- * pointe vers le PostgreSQL managé de Railway.
+ * pointe vers le PostgreSQL managé de Supabase.
  */
 import fs from "node:fs";
 import path from "node:path";

@@ -117,15 +117,29 @@ export async function pool(): Promise<PgPool> {
   pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)));
   pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v)));
 
+  // RUNTIME : toujours DATABASE_URL (pooler transactionnel Supabase en
+  // serverless). MIGRATION_DATABASE_URL est réservé aux migrations et n'est
+  // JAMAIS utilisé ici — voir scripts/migrate.ts.
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL est requis lorsque DB_DRIVER=postgres.");
+
   const needsSsl =
     process.env.PGSSL === "require" ||
     (/[?&]sslmode=require/.test(connectionString) && !/localhost|127\.0\.0\.1/.test(connectionString));
+
+  // Un environnement serverless (Vercel) instancie BEAUCOUP de conteneurs, chacun
+  // avec son propre pool. Un `max` élevé y épuise le pooler Supabase : on limite
+  // donc à 1 connexion par instance par défaut, le vrai mutualisage étant assuré
+  // par le pooler côté Supabase. En serveur long-vécu, on garde un pool normal.
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const max = Number(process.env.PGPOOL_MAX ?? (isServerless ? 1 : 10));
+
   _pool = new Pool({
     connectionString,
-    max: Number(process.env.PGPOOL_MAX ?? 10),
-    idleTimeoutMillis: 30_000,
+    max,
+    // En serverless, garder des connexions oisives immobilise le pooler pour
+    // rien : on les libère vite. Sinon, on conserve le comportement habituel.
+    idleTimeoutMillis: isServerless ? 10_000 : 30_000,
     connectionTimeoutMillis: 10_000,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
   });
@@ -162,7 +176,11 @@ async function sqlite(): Promise<SqliteDb> {
   // native ne peut pas casser le déploiement.
   let Database: new (file: string) => unknown;
   try {
-    Database = (await import("better-sqlite3")).default as never;
+    // Nom de module calculé : empêche le bundler de tenter une résolution
+    // statique (et d'émettre un avertissement) alors que le paquet est
+    // optionnel et absent en production.
+    const mod = "better-sqlite3";
+    Database = ((await import(/* webpackIgnore: true */ mod)) as { default: unknown }).default as never;
   } catch {
     throw new Error(
       "Le driver SQLite (better-sqlite3) n'est pas installé. " +

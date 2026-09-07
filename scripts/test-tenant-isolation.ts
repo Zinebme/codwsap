@@ -235,6 +235,28 @@ async function main() {
   record("authz", "Webhook livraison avec signature invalide rejeté",
     badSig.status === 401 || badSig.status === 403 || badSig.status === 404, `HTTP ${badSig.status}`);
 
+  // /api/cron : point d'entrée du worker planifié en production.
+  // Il doit être inaccessible sans le bon CRON_SECRET.
+  const cronNoAuth = await fetch(`${BASE}/api/cron`, { method: "POST" });
+  record("authz", "/api/cron sans en-tête Authorization rejeté",
+    cronNoAuth.status === 401 || cronNoAuth.status === 503, `HTTP ${cronNoAuth.status}`);
+
+  const cronBadSecret = await fetch(`${BASE}/api/cron`, {
+    method: "POST",
+    headers: { authorization: "Bearer mauvais-secret" },
+  });
+  record("authz", "/api/cron avec mauvais secret rejeté",
+    cronBadSecret.status === 401 || cronBadSecret.status === 503, `HTTP ${cronBadSecret.status}`);
+
+  const cronSecret = process.env.TEST_CRON_SECRET;
+  if (cronSecret) {
+    const cronOk = await fetch(`${BASE}/api/cron`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${cronSecret}` },
+    });
+    record("authz", "/api/cron avec le bon secret accepté", cronOk.status === 200, `HTTP ${cronOk.status}`);
+  }
+
   // Webhook commandes : sans jeton Bearer.
   const noToken = await fetch(`${BASE}/api/webhooks/orders/jeton-invalide`, {
     method: "POST",
