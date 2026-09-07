@@ -105,7 +105,18 @@ let _pool: PgPool | null = null;
 
 export async function pool(): Promise<PgPool> {
   if (_pool) return _pool;
-  const { Pool } = await import("pg");
+  const pg = await import("pg");
+  const { Pool } = pg;
+
+  // PARITÉ SQLITE/POSTGRES : node-postgres renvoie bigint (int8, oid 20) et
+  // numeric (oid 1700) sous forme de CHAÎNE pour préserver la précision.
+  // COUNT(*) et SUM() sont des int8/numeric : sans cette conversion,
+  // `total + row.c` concatène ("0" + "30" = "030") au lieu d'additionner,
+  // et tous les KPI seraient silencieusement faux. Nos compteurs et montants
+  // (centimes DZD) restent très en deçà de Number.MAX_SAFE_INTEGER.
+  pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)));
+  pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v)));
+
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL est requis lorsque DB_DRIVER=postgres.");
   const needsSsl =

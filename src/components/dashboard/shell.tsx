@@ -8,7 +8,7 @@ import {
   Home, Package, Users, MessageSquare, Zap, Truck, Plug, BarChart3, Bell, Settings,
   Search, Menu, X, LogOut, Globe, ChevronDown, CircleDot, AlertTriangle, CheckCircle2, User2,
 } from "lucide-react";
-import { cn, Badge, Button, Dropdown, DropdownItem, DropdownSeparator, Spinner } from "@/components/ui";
+import { cn, Badge, Dropdown, DropdownItem, DropdownSeparator, Spinner } from "@/components/ui";
 import { makeT, type Locale, dir } from "@/lib/i18n";
 import { LocaleContext, useDashLocale } from "./locale";
 

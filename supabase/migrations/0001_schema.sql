@@ -1,7 +1,15 @@
--- CODWSAP — schéma Postgres / Supabase (référence de production).
--- Miroir de src/server/db/schema.sql (driver portable de développement).
+-- CODWSAP — schéma PostgreSQL (staging / production).
+--
+-- GÉNÉRÉ AUTOMATIQUEMENT depuis src/server/db/schema.sql — ne pas éditer à la main.
+--   npm run db:gen-schema
+--
+-- Choix de parité assumés pour qu'un seul jeu de requêtes SQL serve les deux moteurs :
+--   * les horodatages restent en 'text' au format 'YYYY-MM-DD HH:MM:SS' (UTC) :
+--     l'ordre lexicographique = l'ordre chronologique, et substr(created_at,1,10)
+--     découpe les journées de façon identique ;
+--   * les drapeaux booléens restent en 'integer' 0/1, donc "WHERE is_test = 0"
+--     et les binds "? 1 : 0" fonctionnent sans réécriture.
 -- Les politiques RLS sont dans 0002_rls.sql.
-
 
 CREATE TABLE IF NOT EXISTS plans (
   id text PRIMARY KEY,
@@ -13,9 +21,9 @@ CREATE TABLE IF NOT EXISTS plans (
   max_team_members integer NOT NULL DEFAULT 0,
   max_delivery_connections integer NOT NULL DEFAULT 0,
   max_automations integer NOT NULL DEFAULT 0,
-  is_public boolean NOT NULL DEFAULT true,
+  is_public integer NOT NULL DEFAULT 1,
   sort_order integer NOT NULL DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
 CREATE TABLE IF NOT EXISTS merchants (
@@ -32,11 +40,11 @@ CREATE TABLE IF NOT EXISTS merchants (
   locale text NOT NULL DEFAULT 'fr',
   timezone text NOT NULL DEFAULT 'Africa/Algiers',
   onboarding_step integer NOT NULL DEFAULT 1,
-  onboarding_completed_at timestamptz,
-  trial_ends_at timestamptz,
-  last_active_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  onboarding_completed_at text,
+  trial_ends_at text,
+  last_active_at text,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_merchants_status ON merchants(status);
 
@@ -46,10 +54,10 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash text NOT NULL,
   full_name text NOT NULL,
   phone text,
-  is_super_admin boolean NOT NULL DEFAULT false,
-  is_active boolean NOT NULL DEFAULT true,
-  last_login_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  is_super_admin integer NOT NULL DEFAULT 0,
+  is_active integer NOT NULL DEFAULT 1,
+  last_login_at text,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
 CREATE TABLE IF NOT EXISTS merchant_users (
@@ -59,7 +67,7 @@ CREATE TABLE IF NOT EXISTS merchant_users (
   role text NOT NULL DEFAULT 'agent', -- owner | admin | agent
   status text NOT NULL DEFAULT 'active', -- active | invited | disabled
   invited_email text,
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_merchant_users_user ON merchant_users(user_id);
@@ -70,11 +78,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   merchant_id text NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
   plan_code text NOT NULL,
   status text NOT NULL DEFAULT 'trialing', -- trialing | active | past_due | cancelled
-  period_start timestamptz NOT NULL DEFAULT now(),
-  period_end timestamptz,
+  period_start text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  period_end text,
   activated_by text,
   notes text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_subscriptions_merchant ON subscriptions(merchant_id, status);
 
@@ -84,7 +92,7 @@ CREATE TABLE IF NOT EXISTS usage_records (
   period text NOT NULL, -- YYYY-MM
   metric text NOT NULL, -- orders | messages | delivery_api_calls
   value integer NOT NULL DEFAULT 0,
-  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id, period, metric)
 );
 
@@ -97,24 +105,24 @@ CREATE TABLE IF NOT EXISTS customers (
   wilaya text,
   commune text,
   whatsapp_status text NOT NULL DEFAULT 'unknown', -- available | unavailable | unknown | check_failed
-  whatsapp_checked_at timestamptz,
+  whatsapp_checked_at text,
   whatsapp_check_source text,
   opt_in_status text NOT NULL DEFAULT 'unknown', -- opted_in | unknown
-  opt_in_date timestamptz,
+  opt_in_date text,
   opt_in_source text,
   opt_out_status integer NOT NULL DEFAULT 0,
-  opt_out_date timestamptz,
+  opt_out_date text,
   total_orders integer NOT NULL DEFAULT 0,
   delivered_orders integer NOT NULL DEFAULT 0,
   cancelled_orders integer NOT NULL DEFAULT 0,
   returned_orders integer NOT NULL DEFAULT 0,
   total_cod_value integer NOT NULL DEFAULT 0,
-  last_order_at timestamptz,
-  last_interaction_at timestamptz,
+  last_order_at text,
+  last_interaction_at text,
   notes text,
-  is_test boolean NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
+  is_test integer NOT NULL DEFAULT 0,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id, normalized_phone)
 );
 CREATE INDEX IF NOT EXISTS idx_customers_merchant_phone ON customers(merchant_id, normalized_phone);
@@ -147,15 +155,15 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_provider text,
   tracking_number text,
   notes text,
-  confirmed_at timestamptz,
+  confirmed_at text,
   postponed_until text,
-  last_message_at timestamptz,
-  last_reply_at timestamptz,
+  last_message_at text,
+  last_reply_at text,
   attention integer NOT NULL DEFAULT 0,
-  is_test boolean NOT NULL DEFAULT false,
-  order_date timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
+  is_test integer NOT NULL DEFAULT 0,
+  order_date text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id, reference)
 );
 CREATE INDEX IF NOT EXISTS idx_orders_merchant_created ON orders(merchant_id, created_at DESC);
@@ -186,7 +194,7 @@ CREATE TABLE IF NOT EXISTS order_events (
   actor_id text,
   actor_label text,
   metadata text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(order_id, created_at DESC);
 
@@ -196,16 +204,16 @@ CREATE TABLE IF NOT EXISTS delivery_connections (
   provider text NOT NULL, -- ecotrack | yalidine | zrexpress | navex | generic_webhook
   label text NOT NULL,
   status text NOT NULL DEFAULT 'disconnected', -- connected | disconnected | error
-  is_default boolean NOT NULL DEFAULT false,
-  is_active boolean NOT NULL DEFAULT true,
+  is_default integer NOT NULL DEFAULT 0,
+  is_active integer NOT NULL DEFAULT 1,
   credentials_encrypted text,
   settings text,
   status_mapping text,
-  last_sync_at timestamptz,
+  last_sync_at text,
   last_error text,
-  last_error_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  last_error_at text,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_delivery_connections_merchant ON delivery_connections(merchant_id, is_active);
 
@@ -222,7 +230,7 @@ CREATE TABLE IF NOT EXISTS delivery_shipments (
   label_url text,
   last_update text,
   raw_payload text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_shipments_order ON delivery_shipments(order_id);
 CREATE INDEX IF NOT EXISTS idx_shipments_tracking ON delivery_shipments(merchant_id, tracking_number);
@@ -236,10 +244,10 @@ CREATE TABLE IF NOT EXISTS delivery_events (
   raw_status text,
   normalized_status text NOT NULL,
   note text,
-  occurred_at timestamptz NOT NULL DEFAULT now(),
+  occurred_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   raw_payload text,
   idempotency_key text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_events_idem ON delivery_events(merchant_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_delivery_events_order ON delivery_events(order_id, occurred_at DESC);
@@ -257,12 +265,12 @@ CREATE TABLE IF NOT EXISTS whatsapp_connections (
   status text NOT NULL DEFAULT 'disconnected',
   quality_rating text,
   meta_metrics text,
-  last_webhook_at timestamptz,
-  last_message_at timestamptz,
+  last_webhook_at text,
+  last_message_at text,
   last_error text,
-  last_error_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
+  last_error_at text,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id)
 );
 
@@ -272,13 +280,13 @@ CREATE TABLE IF NOT EXISTS whatsapp_conversations (
   customer_id text REFERENCES customers(id) ON DELETE CASCADE,
   order_id text REFERENCES orders(id) ON DELETE SET NULL,
   normalized_phone text NOT NULL,
-  last_message_at timestamptz,
+  last_message_at text,
   last_message_preview text,
-  last_inbound_at timestamptz,
+  last_inbound_at text,
   unread_count integer NOT NULL DEFAULT 0,
-  window_expires_at timestamptz,
+  window_expires_at text,
   status text NOT NULL DEFAULT 'open',
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id, normalized_phone)
 );
 CREATE INDEX IF NOT EXISTS idx_conversations_merchant ON whatsapp_conversations(merchant_id, last_message_at DESC);
@@ -299,17 +307,17 @@ CREATE TABLE IF NOT EXISTS whatsapp_messages (
   error_code text,
   error_message text,
   wa_message_id text,
-  queued_at timestamptz,
-  sent_at timestamptz,
-  delivered_at timestamptz,
-  read_at timestamptz,
-  failed_at timestamptz,
+  queued_at text,
+  sent_at text,
+  delivered_at text,
+  read_at text,
+  failed_at text,
   attempts integer NOT NULL DEFAULT 0,
-  next_attempt_at timestamptz,
+  next_attempt_at text,
   automation_id text,
   dedupe_key text,
-  is_test boolean NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now()
+  is_test integer NOT NULL DEFAULT 0,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_messages_merchant_created ON whatsapp_messages(merchant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON whatsapp_messages(conversation_id, created_at);
@@ -330,8 +338,8 @@ CREATE TABLE IF NOT EXISTS whatsapp_templates (
   event_key text,
   quality text,
   meta_template_id text,
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id, name, language)
 );
 CREATE INDEX IF NOT EXISTS idx_templates_merchant ON whatsapp_templates(merchant_id, status);
@@ -341,17 +349,17 @@ CREATE TABLE IF NOT EXISTS automations (
   merchant_id text NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
   type text NOT NULL, -- new_order_confirmation | reply_yes_confirm | reply_no_cancel | shipped_notice | at_office_notice | out_for_delivery_notice | delivered_thanks | no_response_reminder | failed_message_alert
   name text NOT NULL,
-  enabled boolean NOT NULL DEFAULT true,
+  enabled integer NOT NULL DEFAULT 1,
   template_id text REFERENCES whatsapp_templates(id) ON DELETE SET NULL,
   config text,
   cooldown_minutes integer NOT NULL DEFAULT 180,
   delay_minutes integer NOT NULL DEFAULT 0,
-  last_run_at timestamptz,
+  last_run_at text,
   last_status text,
   run_count integer NOT NULL DEFAULT 0,
   failure_count integer NOT NULL DEFAULT 0,
   suppressed_count integer NOT NULL DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   UNIQUE (merchant_id, type)
 );
 
@@ -364,7 +372,7 @@ CREATE TABLE IF NOT EXISTS automation_runs (
   result text NOT NULL, -- sent | suppressed | failed | skipped
   reason text,
   details text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_automation_runs_merchant ON automation_runs(merchant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id, created_at DESC);
@@ -377,11 +385,11 @@ CREATE TABLE IF NOT EXISTS integrations (
   status text NOT NULL DEFAULT 'disconnected',
   credentials_encrypted text,
   settings text,
-  last_sync_at timestamptz,
+  last_sync_at text,
   last_error text,
-  last_error_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  last_error_at text,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_integrations_merchant ON integrations(merchant_id, kind);
 
@@ -393,8 +401,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   title text NOT NULL,
   body text,
   link text,
-  read_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  read_at text,
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_merchant ON notifications(merchant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(merchant_id, read_at);
@@ -403,9 +411,9 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
   id text PRIMARY KEY,
   merchant_id text NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
   event_type text NOT NULL,
-  dashboard boolean NOT NULL DEFAULT true,
-  telegram boolean NOT NULL DEFAULT false,
-  email boolean NOT NULL DEFAULT false,
+  dashboard integer NOT NULL DEFAULT 1,
+  telegram integer NOT NULL DEFAULT 0,
+  email integer NOT NULL DEFAULT 0,
   UNIQUE (merchant_id, event_type)
 );
 
@@ -416,7 +424,7 @@ CREATE TABLE IF NOT EXISTS customer_consents (
   channel text NOT NULL DEFAULT 'whatsapp',
   action text NOT NULL, -- opt_in | opt_out
   source text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_consents_customer ON customer_consents(customer_id, created_at DESC);
 
@@ -430,7 +438,7 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   status text NOT NULL DEFAULT 'received', -- received | processed | duplicate | failed
   error text,
   payload text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_idem ON webhook_events(source, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_webhook_merchant ON webhook_events(merchant_id, created_at DESC);
@@ -441,10 +449,10 @@ CREATE TABLE IF NOT EXISTS api_logs (
   service text NOT NULL,
   operation text NOT NULL,
   status_code integer,
-  ok boolean NOT NULL DEFAULT true,
+  ok integer NOT NULL DEFAULT 1,
   duration_ms integer,
   error text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_api_logs_merchant ON api_logs(merchant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_api_logs_service ON api_logs(service, created_at DESC);
@@ -459,7 +467,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   resource_id text,
   ip text,
   metadata text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_audit_merchant ON audit_logs(merchant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action, created_at DESC);
@@ -472,10 +480,10 @@ CREATE TABLE IF NOT EXISTS jobs (
   status text NOT NULL DEFAULT 'pending', -- pending | running | done | failed
   attempts integer NOT NULL DEFAULT 0,
   max_attempts integer NOT NULL DEFAULT 3,
-  run_after timestamptz NOT NULL DEFAULT now(),
+  run_after text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
   last_error text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  updated_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(status, run_after);
 
@@ -486,7 +494,7 @@ CREATE TABLE IF NOT EXISTS provider_requests (
   contact text,
   details text,
   status text NOT NULL DEFAULT 'open',
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
 CREATE TABLE IF NOT EXISTS leads (
@@ -495,19 +503,19 @@ CREATE TABLE IF NOT EXISTS leads (
   email text NOT NULL,
   phone text,
   message text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
 CREATE TABLE IF NOT EXISTS sessions_revoked (
   jti text PRIMARY KEY,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at text NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
 );
 
 
 -- Default plans (idempotent). Limits are enforced server-side.
 INSERT INTO plans (id, code, name, price_dzd, max_orders_month, max_messages_month, max_team_members, max_delivery_connections, max_automations, is_public, sort_order)
 VALUES
-  ('plan_trial',   'trial',   'Essai',   0,     200,   500,   2,  1, 9, true, 1),
-  ('plan_starter', 'starter', 'Starter', 4900,  2000,  10000, 5,  2, 9, true, 2),
-  ('plan_pro',     'pro',     'Pro',     9900,  10000, 50000, 15, 5, 9, true, 3)
+  ('plan_trial',   'trial',   'Essai',   0,     200,   500,   2,  1, 9, 1, 1),
+  ('plan_starter', 'starter', 'Starter', 4900,  2000,  10000, 5,  2, 9, 1, 2),
+  ('plan_pro',     'pro',     'Pro',     9900,  10000, 50000, 15, 5, 9, 1, 3)
 ON CONFLICT (code) DO NOTHING;

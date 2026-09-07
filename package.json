@@ -5,10 +5,16 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-3000} -H 0.0.0.0",
+    "worker": "tsx --conditions=react-server scripts/worker.ts",
     "lint": "eslint",
-    "seed": "tsx scripts/seed.ts",
-    "worker": "tsx scripts/worker.ts"
+    "typecheck": "tsc --noEmit",
+    "db:gen-schema": "tsx scripts/gen-pg-schema.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "pg:start": "tsx scripts/pg-local.ts start",
+    "seed": "tsx --conditions=react-server scripts/seed.ts",
+    "test:isolation": "tsx --conditions=react-server scripts/run-isolation-suite.ts",
+    "verify": "npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

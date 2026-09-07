@@ -211,12 +211,11 @@ export async function queueMessage(req: SendRequest): Promise<SendOutcome> {
 
   let body = req.text ?? "";
   let templateName: string | null = null;
-  let language = "fr";
+
   if (req.templateId) {
     const tpl = await get<{ name: string; body: string; language: string }>("SELECT name, body, language FROM whatsapp_templates WHERE id = ?", [req.templateId]);
     if (!tpl) return { status: "suppressed", reason: "template_missing" };
     templateName = tpl.name;
-    language = tpl.language;
     body = renderTemplate(tpl.body, req.variables ?? {});
   }
 
@@ -266,6 +265,7 @@ export async function deliverQueuedMessage(messageId: string): Promise<{ ok: boo
     customer_id: string | null;
     conversation_id: string | null;
     kind: string;
+    template_id: string | null;
     template_name: string | null;
     body: string;
     status: string;
@@ -280,10 +280,21 @@ export async function deliverQueuedMessage(messageId: string): Promise<{ ok: boo
   const to = conv?.normalized_phone;
   if (!to) return { ok: false, error: "Destinataire inconnu." };
 
+  // La langue doit être celle du modèle approuvé par Meta (fr ou ar) : un code
+  // de langue erroné fait rejeter le message par l'API Cloud.
+  let templateLanguage = "fr";
+  if (msg.template_id) {
+    const tpl = await get<{ language: string }>("SELECT language FROM whatsapp_templates WHERE id = ? AND merchant_id = ?", [
+      msg.template_id,
+      msg.merchant_id,
+    ]);
+    if (tpl?.language) templateLanguage = tpl.language;
+  }
+
   const { provider } = await getWhatsappProvider(msg.merchant_id);
   const result =
     msg.kind === "template" && msg.template_name
-      ? await provider.sendTemplate(to, msg.template_name, "fr", [], msg.body)
+      ? await provider.sendTemplate(to, msg.template_name, templateLanguage, [], msg.body)
       : await provider.sendText(to, msg.body);
 
   await run("UPDATE whatsapp_messages SET attempts = attempts + 1 WHERE id = ?", [messageId]);
@@ -323,7 +334,7 @@ export async function bumpUsage(merchantId: string, metric: "orders" | "messages
   await run(
     `INSERT INTO usage_records (id, merchant_id, period, metric, value, updated_at)
      VALUES (?,?,?,?,1,?)
-     ON CONFLICT(merchant_id, period, metric) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at`,
+     ON CONFLICT(merchant_id, period, metric) DO UPDATE SET value = usage_records.value + 1, updated_at = excluded.updated_at`,
     [uid("usg"), merchantId, period, metric, nowIso()],
   );
 }
