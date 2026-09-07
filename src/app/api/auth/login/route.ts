@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     rateLimit(`login:${ip}`, 10, 60_000);
     const body = await parseBody(req, schema);
 
-    const user = get<{ id: string; password_hash: string; is_active: number; is_super_admin: number; email: string }>(
+    const user = await get<{ id: string; password_hash: string; is_active: number; is_super_admin: number; email: string }>(
       "SELECT id, password_hash, is_active, is_super_admin, email FROM users WHERE email = ?",
       [body.email.toLowerCase()],
     );
@@ -23,15 +23,15 @@ export async function POST(req: Request) {
     }
 
     await createSession(user.id);
-    run("UPDATE users SET last_login_at = ? WHERE id = ?", [nowIso(), user.id]);
+    await run("UPDATE users SET last_login_at = ? WHERE id = ?", [nowIso(), user.id]);
 
-    const memberships = membershipsFor(user.id);
+    const memberships = await membershipsFor(user.id);
     const jar = await cookies();
     if (memberships[0]) {
       jar.set("codwsap_merchant", memberships[0].merchant_id, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7 });
-      run("UPDATE merchants SET last_active_at = ? WHERE id = ?", [nowIso(), memberships[0].merchant_id]);
+      await run("UPDATE merchants SET last_active_at = ? WHERE id = ?", [nowIso(), memberships[0].merchant_id]);
     }
-    audit({ merchantId: memberships[0]?.merchant_id ?? null, actorId: user.id, actorLabel: user.email, action: "user.login", ip });
+    await audit({ merchantId: memberships[0]?.merchant_id ?? null, actorId: user.id, actorLabel: user.email, action: "user.login", ip });
 
     return ok({ ok: true, redirect: user.is_super_admin && memberships.length === 0 ? "/admin" : "/dashboard" });
   } catch (e) {

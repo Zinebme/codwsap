@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     await requireSuperAdmin();
-    return ok({ rows: all("SELECT * FROM plans ORDER BY sort_order") });
+    return ok({ rows: await all("SELECT * FROM plans ORDER BY sort_order") });
   } catch (e) {
     return jsonError(e);
   }
@@ -29,7 +29,7 @@ export async function PATCH(req: Request) {
   try {
     await requireSuperAdmin();
     const b = await parseBody(req, schema);
-    run(
+    await run(
       `UPDATE plans SET name = ?, price_dzd = ?, max_orders_month = ?, max_messages_month = ?, max_team_members = ?, max_delivery_connections = ?, max_automations = ? WHERE code = ?`,
       [b.name, b.priceDzd, b.maxOrdersMonth, b.maxMessagesMonth, b.maxTeamMembers, b.maxDeliveryConnections, b.maxAutomations, b.code],
     );

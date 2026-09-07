@@ -10,18 +10,18 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const ctx = await requireTenant();
-    const merchant = get("SELECT * FROM merchants WHERE id = ?", [ctx.merchantId]);
-    const users = all(
+    const merchant = await get("SELECT * FROM merchants WHERE id = ?", [ctx.merchantId]);
+    const users = await all(
       `SELECT mu.id, mu.role, mu.status, u.id AS user_id, u.full_name, u.email, u.last_login_at
        FROM merchant_users mu JOIN users u ON u.id = mu.user_id WHERE mu.merchant_id = ? ORDER BY mu.created_at`,
       [ctx.merchantId],
     );
-    const prefs = all("SELECT * FROM notification_preferences WHERE merchant_id = ?", [ctx.merchantId]);
-    const subscription = get("SELECT * FROM subscriptions WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 1", [ctx.merchantId]);
-    const usage = all("SELECT metric, value FROM usage_records WHERE merchant_id = ? AND period = ?", [ctx.merchantId, new Date().toISOString().slice(0, 7)]);
-    const plan = get("SELECT * FROM plans WHERE code = ?", [(merchant as { plan_code: string }).plan_code]);
+    const prefs = await all("SELECT * FROM notification_preferences WHERE merchant_id = ?", [ctx.merchantId]);
+    const subscription = await get("SELECT * FROM subscriptions WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 1", [ctx.merchantId]);
+    const usage = await all("SELECT metric, value FROM usage_records WHERE merchant_id = ? AND period = ?", [ctx.merchantId, new Date().toISOString().slice(0, 7)]);
+    const plan = await get("SELECT * FROM plans WHERE code = ?", [(merchant as { plan_code: string }).plan_code]);
     const audits = ctx.can("settings.write")
-      ? all("SELECT * FROM audit_logs WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 40", [ctx.merchantId])
+      ? await all("SELECT * FROM audit_logs WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 40", [ctx.merchantId])
       : [];
     return ok({
       merchant,
@@ -60,7 +60,7 @@ export async function PATCH(req: Request) {
     const ctx = await requirePermission("settings.write");
     const body = await parseBody(req, schema);
     if (body.section === "business") {
-      run("UPDATE merchants SET name = ?, phone = ?, email = ?, wilaya = ?, address = ?, locale = COALESCE(?, locale), updated_at = ? WHERE id = ?", [
+      await run("UPDATE merchants SET name = ?, phone = ?, email = ?, wilaya = ?, address = ?, locale = COALESCE(?, locale), updated_at = ? WHERE id = ?", [
         body.name,
         body.phone ?? null,
         body.email ?? null,
@@ -73,14 +73,14 @@ export async function PATCH(req: Request) {
     } else {
       const { uid } = await import("@/server/db");
       for (const p of body.prefs) {
-        run(
+        await run(
           `INSERT INTO notification_preferences (id, merchant_id, event_type, dashboard, telegram, email) VALUES (?,?,?,?,?,?)
            ON CONFLICT(merchant_id, event_type) DO UPDATE SET dashboard = excluded.dashboard, telegram = excluded.telegram, email = excluded.email`,
           [uid("npf"), ctx.merchantId, p.event_type, p.dashboard ? 1 : 0, p.telegram ? 1 : 0, p.email ? 1 : 0],
         );
       }
     }
-    audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: `settings.${body.section}_updated`, ip: await clientIp() });
+    await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: `settings.${body.section}_updated`, ip: await clientIp() });
     return ok({ ok: true });
   } catch (e) {
     return jsonError(e);

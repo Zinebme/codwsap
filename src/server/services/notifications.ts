@@ -44,7 +44,7 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 /** Events that are noisy by default and therefore opt-in only. */
 const DEFAULT_OFF: NotificationType[] = ["delivery_status"];
 
-export function notify(params: {
+export async function notify(params: {
   merchantId: string;
   type: NotificationType;
   severity?: "info" | "success" | "warning" | "error";
@@ -52,7 +52,7 @@ export function notify(params: {
   body?: string;
   link?: string;
 }) {
-  const pref = get<{ dashboard: number; telegram: number }>(
+  const pref = await get<{ dashboard: number; telegram: number }>(
     "SELECT dashboard, telegram FROM notification_preferences WHERE merchant_id = ? AND event_type = ?",
     [params.merchantId, params.type],
   );
@@ -60,13 +60,13 @@ export function notify(params: {
   const telegram = pref ? !!pref.telegram : false;
 
   if (dashboard) {
-    run(
+    await run(
       `INSERT INTO notifications (id, merchant_id, type, severity, title, body, link) VALUES (?,?,?,?,?,?,?)`,
       [uid("ntf"), params.merchantId, params.type, params.severity ?? "info", params.title, params.body ?? null, params.link ?? null],
     );
   }
   if (telegram) {
-    enqueueJob({
+    await enqueueJob({
       merchantId: params.merchantId,
       type: "notify_telegram",
       payload: { title: params.title, body: params.body ?? "" },
@@ -74,8 +74,8 @@ export function notify(params: {
   }
 }
 
-export function unreadCount(merchantId: string): number {
-  const row = get<{ c: number }>(
+export async function unreadCount(merchantId: string): Promise<number> {
+  const row = await get<{ c: number }>(
     "SELECT COUNT(*) AS c FROM notifications WHERE merchant_id = ? AND read_at IS NULL",
     [merchantId],
   );

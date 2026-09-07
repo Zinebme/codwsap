@@ -12,7 +12,7 @@ export async function GET() {
     const range = rangeFromPreset("30d");
     const todayStart = new Date().toISOString().slice(0, 10);
 
-    const today = get<Record<string, number>>(
+    const today = await get<Record<string, number>>(
       `SELECT COUNT(*) AS orders,
         SUM(CASE WHEN status='new' THEN 1 ELSE 0 END) AS new,
         SUM(CASE WHEN status='awaiting_confirmation' THEN 1 ELSE 0 END) AS awaiting,
@@ -27,39 +27,39 @@ export async function GET() {
       [m, todayStart],
     );
 
-    const kpi = merchantKpis(m, range) as unknown as Record<string, number>;
-    kpi.attention = get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ? AND attention = 1 AND status NOT IN ('delivered','returned')", [m])?.c ?? 0;
+    const kpi = await merchantKpis(m, range) as unknown as Record<string, number>;
+    kpi.attention = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ? AND attention = 1 AND status NOT IN ('delivered','returned')", [m]))?.c ?? 0;
 
-    const merchant = get<{ onboarding_completed_at: string | null; wilaya: string | null }>("SELECT onboarding_completed_at, wilaya FROM merchants WHERE id = ?", [m]);
-    const waConn = get<{ status: string }>("SELECT status FROM whatsapp_connections WHERE merchant_id = ?", [m]);
-    const dlvCount = get<{ c: number }>("SELECT COUNT(*) AS c FROM delivery_connections WHERE merchant_id = ?", [m])?.c ?? 0;
-    const srcCount = get<{ c: number }>("SELECT COUNT(*) AS c FROM integrations WHERE merchant_id = ? AND kind IN ('google_sheets','webhook')", [m])?.c ?? 0;
-    const ordersCount = get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ?", [m])?.c ?? 0;
-    const approvedTemplates = get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_templates WHERE merchant_id = ? AND status = 'approved'", [m])?.c ?? 0;
+    const merchant = await get<{ onboarding_completed_at: string | null; wilaya: string | null }>("SELECT onboarding_completed_at, wilaya FROM merchants WHERE id = ?", [m]);
+    const waConn = await get<{ status: string }>("SELECT status FROM whatsapp_connections WHERE merchant_id = ?", [m]);
+    const dlvCount = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM delivery_connections WHERE merchant_id = ?", [m]))?.c ?? 0;
+    const srcCount = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM integrations WHERE merchant_id = ? AND kind IN ('google_sheets','webhook')", [m]))?.c ?? 0;
+    const ordersCount = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ?", [m]))?.c ?? 0;
+    const approvedTemplates = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_templates WHERE merchant_id = ? AND status = 'approved'", [m]))?.c ?? 0;
 
     return ok({
       kpi,
       today: today ?? {},
-      recentOrders: all(
+      recentOrders: await all(
         "SELECT id, reference, customer_name, normalized_phone, wilaya, total, status, created_at FROM orders WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 8",
         [m],
       ),
-      recentReplies: all(
+      recentReplies: await all(
         `SELECT msg.id, msg.body, msg.created_at, c.full_name AS customer_name, c.normalized_phone
          FROM whatsapp_messages msg LEFT JOIN customers c ON c.id = msg.customer_id
          WHERE msg.merchant_id = ? AND msg.direction = 'inbound' ORDER BY msg.created_at DESC LIMIT 6`,
         [m],
       ),
-      incidents: all(
+      incidents: await all(
         `SELECT e.id, e.order_id, e.raw_status, e.normalized_status, o.reference FROM delivery_events e
          JOIN orders o ON o.id = e.order_id
          WHERE e.merchant_id = ? AND e.normalized_status IN ('delivery_failed','returned') ORDER BY e.occurred_at DESC LIMIT 6`,
         [m],
       ),
-      alerts: all("SELECT id, title, created_at FROM notifications WHERE merchant_id = ? AND severity IN ('error','warning') ORDER BY created_at DESC LIMIT 5", [m]),
-      automationFailures: all("SELECT id, reason, created_at FROM automation_runs WHERE merchant_id = ? AND result = 'failed' ORDER BY created_at DESC LIMIT 5", [m]),
-      ordersByDay: ordersByDay(m, range),
-      messagesByDay: messagesByDay(m, range),
+      alerts: await all("SELECT id, title, created_at FROM notifications WHERE merchant_id = ? AND severity IN ('error','warning') ORDER BY created_at DESC LIMIT 5", [m]),
+      automationFailures: await all("SELECT id, reason, created_at FROM automation_runs WHERE merchant_id = ? AND result = 'failed' ORDER BY created_at DESC LIMIT 5", [m]),
+      ordersByDay: await ordersByDay(m, range),
+      messagesByDay: await messagesByDay(m, range),
       onboarding: {
         completed: !!merchant?.onboarding_completed_at,
         progress: {

@@ -21,7 +21,7 @@ export async function GET(req: Request) {
     }
     if (unread) where.push("c.unread_count > 0");
 
-    const rows = all(
+    const rows = await all(
       `SELECT c.*, cu.full_name AS customer_name, cu.whatsapp_status, o.reference AS order_reference
        FROM whatsapp_conversations c
        LEFT JOIN customers cu ON cu.id = c.customer_id
@@ -30,10 +30,10 @@ export async function GET(req: Request) {
        ORDER BY c.last_message_at DESC NULLS LAST LIMIT ? OFFSET ?`,
       [...params, pageSize, (page - 1) * pageSize],
     );
-    const total = get<{ c: number }>(
+    const total = (await get<{ c: number }>(
       `SELECT COUNT(*) AS c FROM whatsapp_conversations c LEFT JOIN customers cu ON cu.id = c.customer_id LEFT JOIN orders o ON o.id = c.order_id WHERE ${where.join(" AND ")}`,
       params,
-    )?.c ?? 0;
+    ))?.c ?? 0;
     return ok({ rows, total, page, pages: Math.max(1, Math.ceil(total / pageSize)) });
   } catch (e) {
     return jsonError(e);

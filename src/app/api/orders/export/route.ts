@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     const multi = (k: string) => p.getAll(k).flatMap((v) => v.split(",")).filter(Boolean);
 
     // Bounded export (avoids loading tens of thousands of rows into memory).
-    const { rows } = listOrders({
+    const { rows } = await listOrders({
       merchantId: ctx.merchantId,
       q: p.get("q") ?? undefined,
       status: multi("status"),

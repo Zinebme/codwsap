@@ -11,9 +11,9 @@ export async function GET(req: Request) {
     const ctx = await requireTenant();
     const p = new URL(req.url).searchParams;
     const range = rangeFromPreset(p.get("preset") ?? "30d", p.get("from") ?? undefined, p.get("to") ?? undefined);
-    const kpi = merchantKpis(ctx.merchantId, range);
+    const kpi = await merchantKpis(ctx.merchantId, range);
     const assessment = qualityAssessment(kpi);
-    const conn = get<{ quality_rating: string | null; meta_metrics: string | null; status: string }>(
+    const conn = await get<{ quality_rating: string | null; meta_metrics: string | null; status: string }>(
       "SELECT quality_rating, meta_metrics, status FROM whatsapp_connections WHERE merchant_id = ?",
       [ctx.merchantId],
     );
@@ -21,8 +21,8 @@ export async function GET(req: Request) {
       range,
       kpi,
       assessment,
-      templates: templatePerformance(ctx.merchantId, range),
-      suppressions: recentSuppressions(ctx.merchantId, 15),
+      templates: await templatePerformance(ctx.merchantId, range),
+      suppressions: await recentSuppressions(ctx.merchantId, 15),
       // Meta-sourced values are shown separately and never invented.
       meta: conn?.status === "connected" ? { qualityRating: conn.quality_rating, raw: conn.meta_metrics } : null,
     });

@@ -80,13 +80,13 @@ export default function AutomationsPage() {
                     </div>
                     <p className="mt-1 text-[12px] leading-relaxed text-ink-500">{ar ? meta?.desc_ar : meta?.desc_fr}</p>
                   </div>
-                  <Toggle checked={!!a.enabled} onChange={(v) => patch(a.id, { enabled: v })} />
+                  <Toggle checked={!!a.enabled} onChange={async (v) => await patch(a.id, { enabled: v })} />
                 </div>
 
                 <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
                   <label className="block">
                     <span className="text-[11px] font-medium uppercase text-ink-400">{ar ? "القالب" : "Template"}</span>
-                    <Select className="mt-1 h-8 py-0 text-[12.5px]" value={a.template_id ?? ""} onChange={(e) => patch(a.id, { templateId: e.target.value || null })}>
+                    <Select className="mt-1 h-8 py-0 text-[12.5px]" value={a.template_id ?? ""} onChange={async (e) => await patch(a.id, { templateId: e.target.value || null })}>
                       <option value="">{ar ? "بدون" : "Aucun"}</option>
                       {data.templates.map((t) => (
                         <option key={t.id} value={t.id}>{t.name} {t.status !== "approved" ? `(${t.status})` : ""}</option>
@@ -95,13 +95,13 @@ export default function AutomationsPage() {
                   </label>
                   <label className="block">
                     <span className="text-[11px] font-medium uppercase text-ink-400">{ar ? "تأخير (دقيقة)" : "Délai (min)"}</span>
-                    <Select className="mt-1 h-8 py-0 text-[12.5px]" value={String(a.delay_minutes)} onChange={(e) => patch(a.id, { delayMinutes: Number(e.target.value) })}>
+                    <Select className="mt-1 h-8 py-0 text-[12.5px]" value={String(a.delay_minutes)} onChange={async (e) => await patch(a.id, { delayMinutes: Number(e.target.value) })}>
                       {[0, 5, 15, 30, 60, 180, 360, 720, 1440].map((v) => <option key={v} value={v}>{v}</option>)}
                     </Select>
                   </label>
                   <label className="block">
                     <span className="text-[11px] font-medium uppercase text-ink-400">{ar ? "تهدئة (دقيقة)" : "Cooldown (min)"}</span>
-                    <Select className="mt-1 h-8 py-0 text-[12.5px]" value={String(a.cooldown_minutes)} onChange={(e) => patch(a.id, { cooldownMinutes: Number(e.target.value) })}>
+                    <Select className="mt-1 h-8 py-0 text-[12.5px]" value={String(a.cooldown_minutes)} onChange={async (e) => await patch(a.id, { cooldownMinutes: Number(e.target.value) })}>
                       {[0, 30, 60, 180, 360, 720, 1440].map((v) => <option key={v} value={v}>{v}</option>)}
                     </Select>
                   </label>

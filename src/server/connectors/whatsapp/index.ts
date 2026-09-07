@@ -58,7 +58,7 @@ class MetaCloudProvider implements WhatsappProvider {
         messages?: { id: string }[];
         error?: { code?: number; message?: string; type?: string };
       };
-      apiLog({
+      await apiLog({
         merchantId: this.conn.merchant_id,
         service: "whatsapp",
         operation,
@@ -77,7 +77,7 @@ class MetaCloudProvider implements WhatsappProvider {
       }
       return { ok: true, provider: this.name, waMessageId: json.messages[0].id };
     } catch (e) {
-      apiLog({
+      await apiLog({
         merchantId: this.conn.merchant_id,
         service: "whatsapp",
         operation,
@@ -122,8 +122,8 @@ class SandboxProvider implements WhatsappProvider {
   readonly name = "sandbox";
   constructor(private merchantId: string) {}
 
-  private sim(operation: string): SendResult {
-    apiLog({ merchantId: this.merchantId, service: "whatsapp", operation, ok: true, statusCode: 200, durationMs: 12 });
+  private async sim(operation: string): Promise<SendResult> {
+    await apiLog({ merchantId: this.merchantId, service: "whatsapp", operation, ok: true, statusCode: 200, durationMs: 12 });
     return { ok: true, provider: this.name, waMessageId: `sandbox.${crypto.randomUUID()}` };
   }
   async sendText() {
@@ -137,8 +137,8 @@ class SandboxProvider implements WhatsappProvider {
   }
 }
 
-export function getWhatsappProvider(merchantId: string): { provider: WhatsappProvider; connected: boolean } {
-  const conn = get<WhatsappConnection>("SELECT * FROM whatsapp_connections WHERE merchant_id = ?", [merchantId]);
+export async function getWhatsappProvider(merchantId: string): Promise<{ provider: WhatsappProvider; connected: boolean }> {
+  const conn = await get<WhatsappConnection>("SELECT * FROM whatsapp_connections WHERE merchant_id = ?", [merchantId]);
   if (!conn || conn.status !== "connected" || !conn.phone_number_id) {
     return { provider: new SandboxProvider(merchantId), connected: false };
   }

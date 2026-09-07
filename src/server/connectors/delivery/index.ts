@@ -71,7 +71,7 @@ abstract class BaseHttpConnector implements DeliveryConnector {
       } catch {
         json = { raw: text.slice(0, 500) };
       }
-      apiLog({
+      await apiLog({
         merchantId: this.merchantId,
         service: `delivery:${this.provider}`,
         operation,
@@ -82,7 +82,7 @@ abstract class BaseHttpConnector implements DeliveryConnector {
       });
       return { ok: res.ok, status: res.status, json };
     } catch (e) {
-      apiLog({
+      await apiLog({
         merchantId: this.merchantId,
         service: `delivery:${this.provider}`,
         operation,
@@ -490,8 +490,8 @@ export function buildConnector(provider: string, creds: Creds, merchantId: strin
   }
 }
 
-export function connectorForConnection(connectionId: string, merchantId: string): DeliveryConnector | null {
-  const conn = get<{ id: string; provider: string; credentials_encrypted: string | null; status_mapping: string | null }>(
+export async function connectorForConnection(connectionId: string, merchantId: string): Promise<DeliveryConnector | null> {
+  const conn = await get<{ id: string; provider: string; credentials_encrypted: string | null; status_mapping: string | null }>(
     "SELECT id, provider, credentials_encrypted, status_mapping FROM delivery_connections WHERE id = ? AND merchant_id = ?",
     [connectionId, merchantId],
   );

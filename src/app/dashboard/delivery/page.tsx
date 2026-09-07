@@ -116,9 +116,9 @@ export default function DeliveryPage() {
               <div className="mt-3 flex items-center justify-between border-t border-ink-100 pt-2.5">
                 <span className="text-[11.5px] text-ink-500">{ar ? "آخر مزامنة" : "Dernière synchro"} : {f.dateTime(c.last_sync_at)}</span>
                 <div className="flex gap-1.5">
-                  <Button size="sm" loading={testingId === c.id} onClick={() => test(c.id)}><Plug className="h-3.5 w-3.5" /> {ar ? "اختبار" : "Tester"}</Button>
+                  <Button size="sm" loading={testingId === c.id} onClick={async () => await test(c.id)}><Plug className="h-3.5 w-3.5" /> {ar ? "اختبار" : "Tester"}</Button>
                   <Button size="sm" onClick={() => setEditing(c)}>{ar ? "إعداد" : "Configurer"}</Button>
-                  <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={() => remove(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={async () => await remove(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </Card>

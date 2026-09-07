@@ -13,10 +13,10 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const ctx = await requirePermission("integrations.read");
-    const integrations = all<{ id: string; kind: string; label: string | null; status: string; settings: string | null; credentials_encrypted: string | null; last_sync_at: string | null; last_error: string | null }>(
+    const integrations = (await all<{ id: string; kind: string; label: string | null; status: string; settings: string | null; credentials_encrypted: string | null; last_sync_at: string | null; last_error: string | null }>(
       "SELECT * FROM integrations WHERE merchant_id = ?",
       [ctx.merchantId],
-    ).map((i) => {
+    )).map((i) => {
       const creds = decryptSecret<Record<string, string>>(i.credentials_encrypted) ?? {};
       return {
         id: i.id,
@@ -29,12 +29,12 @@ export async function GET() {
         secrets: Object.fromEntries(Object.entries(creds).map(([k, v]) => [k, maskSecret(v)])),
       };
     });
-    const whatsapp = get<{ status: string; last_webhook_at: string | null; last_message_at: string | null; last_error: string | null }>(
+    const whatsapp = await get<{ status: string; last_webhook_at: string | null; last_message_at: string | null; last_error: string | null }>(
       "SELECT status, last_webhook_at, last_message_at, last_error FROM whatsapp_connections WHERE merchant_id = ?",
       [ctx.merchantId],
     );
-    const delivery = all("SELECT id, provider, label, status, last_sync_at, last_error FROM delivery_connections WHERE merchant_id = ?", [ctx.merchantId]);
-    return ok({ integrations, whatsapp: whatsapp ?? null, delivery, jobs: workerHealth() });
+    const delivery = await all("SELECT id, provider, label, status, last_sync_at, last_error FROM delivery_connections WHERE merchant_id = ?", [ctx.merchantId]);
+    return ok({ integrations, whatsapp: whatsapp ?? null, delivery, jobs: await workerHealth() });
   } catch (e) {
     return jsonError(e);
   }
@@ -58,7 +58,7 @@ export async function PUT(req: Request) {
   try {
     const ctx = await requirePermission("integrations.write");
     const body = await parseBody(req, schema);
-    const existing = get<{ id: string; credentials_encrypted: string | null }>("SELECT id, credentials_encrypted FROM integrations WHERE merchant_id = ? AND kind = ?", [ctx.merchantId, body.kind]);
+    const existing = await get<{ id: string; credentials_encrypted: string | null }>("SELECT id, credentials_encrypted FROM integrations WHERE merchant_id = ? AND kind = ?", [ctx.merchantId, body.kind]);
     const id = existing?.id ?? uid("int");
 
     let settings: unknown = {};
@@ -75,14 +75,14 @@ export async function PUT(req: Request) {
     }
 
     if (existing) {
-      run("UPDATE integrations SET settings = ?, credentials_encrypted = ?, status = 'connected', updated_at = ? WHERE id = ?", [
+      await run("UPDATE integrations SET settings = ?, credentials_encrypted = ?, status = 'connected', updated_at = ? WHERE id = ?", [
         JSON.stringify(settings),
         encryptSecret(credentials),
         nowIso(),
         id,
       ]);
     } else {
-      run("INSERT INTO integrations (id, merchant_id, kind, label, status, credentials_encrypted, settings) VALUES (?,?,?,?, 'connected', ?, ?)", [
+      await run("INSERT INTO integrations (id, merchant_id, kind, label, status, credentials_encrypted, settings) VALUES (?,?,?,?, 'connected', ?, ?)", [
         id,
         ctx.merchantId,
         body.kind,
@@ -91,7 +91,7 @@ export async function PUT(req: Request) {
         JSON.stringify(settings),
       ]);
     }
-    audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.connected", resource: body.kind, resourceId: id, ip: await clientIp() });
+    await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.connected", resource: body.kind, resourceId: id, ip: await clientIp() });
     return ok({ ok: true, id });
   } catch (e) {
     return jsonError(e);
@@ -103,8 +103,8 @@ export async function DELETE(req: Request) {
     const ctx = await requirePermission("integrations.write");
     const kind = new URL(req.url).searchParams.get("kind");
     if (!kind) return ok({ error: "Intégration inconnue." }, { status: 400 });
-    run("DELETE FROM integrations WHERE merchant_id = ? AND kind = ?", [ctx.merchantId, kind]);
-    audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.disconnected", resource: kind, ip: await clientIp() });
+    await run("DELETE FROM integrations WHERE merchant_id = ? AND kind = ?", [ctx.merchantId, kind]);
+    await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.disconnected", resource: kind, ip: await clientIp() });
     return ok({ ok: true });
   } catch (e) {
     return jsonError(e);

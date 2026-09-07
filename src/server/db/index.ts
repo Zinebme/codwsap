@@ -165,7 +165,7 @@ async function sqlite(): Promise<SqliteDb> {
  * Public API
  * ------------------------------------------------------------------ */
 export async function all<T = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
-  if (activeDriver() === "postgres") return pgQuery<T>(sql, params);
+  if (activeDriver() === "postgres") return await pgQuery<T>(sql, params);
   const db = await sqlite();
   return db.prepare(sql).all(...(params as never[])) as T[];
 }

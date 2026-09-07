@@ -18,7 +18,7 @@ async function handle(job: Job): Promise<void> {
     }
     case "poll_delivery": {
       // Poll only orders that are in-flight, in small batches.
-      const orders = all<{ id: string; merchant_id: string }>(
+      const orders = await all<{ id: string; merchant_id: string }>(
         `SELECT id, merchant_id FROM orders
          WHERE merchant_id = ? AND tracking_number IS NOT NULL
            AND delivery_status NOT IN ('delivered','returned','delivery_failed')
@@ -33,7 +33,7 @@ async function handle(job: Job): Promise<void> {
         }
       }
       if (orders.length && job.merchant_id) {
-        enqueueJob({ merchantId: job.merchant_id, type: "poll_delivery", runAfter: new Date(Date.now() + 15 * 60_000) });
+        await enqueueJob({ merchantId: job.merchant_id, type: "poll_delivery", runAfter: new Date(Date.now() + 15 * 60_000) });
       }
       return;
     }
@@ -43,11 +43,11 @@ async function handle(job: Job): Promise<void> {
       return;
     }
     case "reminder": {
-      runNoResponseReminder(payload.orderId);
+      await runNoResponseReminder(payload.orderId);
       return;
     }
     case "notify_telegram": {
-      const integ = get<{ credentials_encrypted: string | null }>(
+      const integ = await get<{ credentials_encrypted: string | null }>(
         "SELECT credentials_encrypted FROM integrations WHERE merchant_id = ? AND kind = 'telegram' AND status = 'connected' LIMIT 1",
         [job.merchant_id],
       );
@@ -60,7 +60,7 @@ async function handle(job: Job): Promise<void> {
         body: JSON.stringify({ chat_id: creds.chat_id, text, parse_mode: "Markdown" }),
         signal: AbortSignal.timeout(10000),
       });
-      apiLog({ merchantId: job.merchant_id, service: "telegram", operation: "sendMessage", ok: res.ok, statusCode: res.status });
+      await apiLog({ merchantId: job.merchant_id, service: "telegram", operation: "sendMessage", ok: res.ok, statusCode: res.status });
       if (!res.ok) throw new Error(`Telegram HTTP ${res.status}`);
       return;
     }
@@ -71,32 +71,32 @@ async function handle(job: Job): Promise<void> {
 
 /** Processes a bounded batch. Called by the cron endpoint and after mutations. */
 export async function runWorker(limit = 20): Promise<{ processed: number; failed: number }> {
-  const jobs = claimJobs(limit);
+  const jobs = await claimJobs(limit);
   let failed = 0;
   for (const job of jobs) {
     try {
       await handle(job);
-      completeJob(job.id);
+      await completeJob(job.id);
     } catch (e) {
-      const outcome = failJob(job, (e as Error).message);
+      const outcome = await failJob(job, (e as Error).message);
       if (outcome === "failed") {
         failed++;
         if (job.type === "send_whatsapp") {
           const payload = safeJson<{ messageId: string }>(job.payload);
-          if (payload?.messageId) markMessageFailed(payload.messageId, (e as Error).message);
+          if (payload?.messageId) await markMessageFailed(payload.messageId, (e as Error).message);
         }
       }
     }
   }
-  run("DELETE FROM jobs WHERE status = 'done' AND updated_at < ?", [new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 19).replace("T", " ")]);
+  await run("DELETE FROM jobs WHERE status = 'done' AND updated_at < ?", [new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 19).replace("T", " ")]);
   return { processed: jobs.length, failed };
 }
 
-export function workerHealth() {
-  const pending = get<{ c: number }>("SELECT COUNT(*) AS c FROM jobs WHERE status = 'pending'")?.c ?? 0;
-  const failedJobs = get<{ c: number }>("SELECT COUNT(*) AS c FROM jobs WHERE status = 'failed'")?.c ?? 0;
-  const stuck = get<{ c: number }>("SELECT COUNT(*) AS c FROM jobs WHERE status = 'running' AND updated_at < ?", [
+export async function workerHealth() {
+  const pending = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM jobs WHERE status = 'pending'"))?.c ?? 0;
+  const failedJobs = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM jobs WHERE status = 'failed'"))?.c ?? 0;
+  const stuck = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM jobs WHERE status = 'running' AND updated_at < ?", [
     new Date(Date.now() - 10 * 60_000).toISOString().slice(0, 19).replace("T", " "),
-  ])?.c ?? 0;
+  ]))?.c ?? 0;
   return { pending, failed: failedJobs, stuck, checkedAt: nowIso() };
 }

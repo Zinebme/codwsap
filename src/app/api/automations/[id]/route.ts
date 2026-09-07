@@ -15,19 +15,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const ctx = await requirePermission("automations.write");
     const { id } = await params;
-    const automation = get("SELECT id FROM automations WHERE id = ? AND merchant_id = ?", [id, ctx.merchantId]);
+    const automation = await get("SELECT id FROM automations WHERE id = ? AND merchant_id = ?", [id, ctx.merchantId]);
     if (!automation) throw new HttpError(404, "Automatisation introuvable.", "not_found");
     const body = await parseBody(req, schema);
     if (body.templateId) {
-      const tpl = get("SELECT id FROM whatsapp_templates WHERE id = ? AND merchant_id = ?", [body.templateId, ctx.merchantId]);
+      const tpl = await get("SELECT id FROM whatsapp_templates WHERE id = ? AND merchant_id = ?", [body.templateId, ctx.merchantId]);
       if (!tpl) throw new HttpError(400, "Template invalide.", "bad_request");
     }
-    run(
+    await run(
       `UPDATE automations SET enabled = COALESCE(?, enabled), template_id = ?, cooldown_minutes = COALESCE(?, cooldown_minutes),
         delay_minutes = COALESCE(?, delay_minutes) WHERE id = ? AND merchant_id = ?`,
       [body.enabled == null ? null : body.enabled ? 1 : 0, body.templateId ?? null, body.cooldownMinutes ?? null, body.delayMinutes ?? null, id, ctx.merchantId],
     );
-    audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "automation.modified", resource: "automation", resourceId: id, ip: await clientIp() });
+    await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "automation.modified", resource: "automation", resourceId: id, ip: await clientIp() });
     return ok({ ok: true });
   } catch (e) {
     return jsonError(e);

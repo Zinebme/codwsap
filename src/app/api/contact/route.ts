@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   try {
     rateLimit(`contact:${(await clientIp()) ?? "anon"}`, 5, 300_000);
     const body = await parseBody(req, schema);
-    run("INSERT INTO leads (id, name, email, phone, message) VALUES (?,?,?,?,?)", [uid("led"), body.name, body.email, body.phone ?? null, body.message]);
+    await run("INSERT INTO leads (id, name, email, phone, message) VALUES (?,?,?,?,?)", [uid("led"), body.name, body.email, body.phone ?? null, body.message]);
     return ok({ ok: true }, { status: 201 });
   } catch (e) {
     return jsonError(e);

@@ -82,13 +82,13 @@ export function OrderDrawer({ id, onClose, onChanged }: { id: string; onClose: (
                 <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
               </Button>
             </a>
-            <Button size="sm" loading={busy === "confirm"} onClick={() => act({ action: "set_status", status: "confirmed" }, ar ? "تم التأكيد" : "Commande confirmée", "confirm")}>
+            <Button size="sm" loading={busy === "confirm"} onClick={async () => await act({ action: "set_status", status: "confirmed" }, ar ? "تم التأكيد" : "Commande confirmée", "confirm")}>
               <CheckCircle2 className="h-3.5 w-3.5" /> {ar ? "تأكيد" : "Confirmer"}
             </Button>
-            <Button size="sm" loading={busy === "delivery"} onClick={() => act({ action: "send_to_delivery" }, ar ? "أرسلت للناقل" : "Envoyée au transporteur", "delivery")}>
+            <Button size="sm" loading={busy === "delivery"} onClick={async () => await act({ action: "send_to_delivery" }, ar ? "أرسلت للناقل" : "Envoyée au transporteur", "delivery")}>
               <Truck className="h-3.5 w-3.5" /> {ar ? "إرسال" : "Expédier"}
             </Button>
-            <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50" loading={busy === "cancel"} onClick={() => act({ action: "set_status", status: "cancelled_by_customer" }, ar ? "تم الإلغاء" : "Commande annulée", "cancel")}>
+            <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50" loading={busy === "cancel"} onClick={async () => await act({ action: "set_status", status: "cancelled_by_customer" }, ar ? "تم الإلغاء" : "Commande annulée", "cancel")}>
               <XCircle className="h-3.5 w-3.5" /> {ar ? "إلغاء" : "Annuler"}
             </Button>
           </div>
@@ -114,7 +114,7 @@ export function OrderDrawer({ id, onClose, onChanged }: { id: string; onClose: (
               <Select
                 className="h-8 w-auto py-0 text-[12.5px]"
                 value={String(o.status)}
-                onChange={(e) => act({ action: "set_status", status: e.target.value }, ar ? "تم تحديث الحالة" : "Statut mis à jour", "status")}
+                onChange={async (e) => await act({ action: "set_status", status: e.target.value }, ar ? "تم تحديث الحالة" : "Statut mis à jour", "status")}
               >
                 {ORDER_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -191,7 +191,7 @@ export function OrderDrawer({ id, onClose, onChanged }: { id: string; onClose: (
                     </div>
                   </div>
                   <div className="mt-3 flex gap-2">
-                    <Button size="sm" loading={busy === "refresh"} onClick={() => act({ action: "refresh_tracking" }, ar ? "تم التحديث" : "Suivi actualisé", "refresh")}>
+                    <Button size="sm" loading={busy === "refresh"} onClick={async () => await act({ action: "refresh_tracking" }, ar ? "تم التحديث" : "Suivi actualisé", "refresh")}>
                       <RefreshCw className="h-3.5 w-3.5" /> {ar ? "تحديث التتبع" : "Actualiser le suivi"}
                     </Button>
                   </div>
@@ -228,7 +228,7 @@ export function OrderDrawer({ id, onClose, onChanged }: { id: string; onClose: (
                     <Button size="sm" disabled={!note.trim()} loading={busy === "note"} onClick={() => act({ action: "note", note }, ar ? "تمت إضافة الملاحظة" : "Note ajoutée", "note").then(() => setNote(""))}>
                       <StickyNote className="h-3.5 w-3.5" /> {ar ? "حفظ الملاحظة" : "Enregistrer la note"}
                     </Button>
-                    <Button size="sm" loading={busy === "postpone"} onClick={() => act({ action: "postpone", until: new Date(Date.now() + 864e5).toISOString().slice(0, 10) }, ar ? "تم التأجيل" : "Commande reportée", "postpone")}>
+                    <Button size="sm" loading={busy === "postpone"} onClick={async () => await act({ action: "postpone", until: new Date(Date.now() + 864e5).toISOString().slice(0, 10) }, ar ? "تم التأجيل" : "Commande reportée", "postpone")}>
                       <Clock className="h-3.5 w-3.5" /> {ar ? "تأجيل ليوم" : "Reporter à demain"}
                     </Button>
                     <AssignControl orderId={id} onDone={() => { mutate(); onChanged(); }} ar={ar} />
@@ -249,7 +249,7 @@ export function OrderDrawer({ id, onClose, onChanged }: { id: string; onClose: (
                         {m.template_name && <Badge tone="gray">{m.template_name}</Badge>}
                         <MessageStatusBadge status={String(m.status)} />
                         {m.status === "failed" && (
-                          <button className="text-[11px] text-brand-600 underline" onClick={() => act({ action: "resend_message", messageId: m.id }, ar ? "أعيد الإرسال" : "Message renvoyé", "resend")}>
+                          <button className="text-[11px] text-brand-600 underline" onClick={async () => await act({ action: "resend_message", messageId: m.id }, ar ? "أعيد الإرسال" : "Message renvoyé", "resend")}>
                             {ar ? "إعادة الإرسال" : "Renvoyer"}
                           </button>
                         )}

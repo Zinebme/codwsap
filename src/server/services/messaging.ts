@@ -85,11 +85,11 @@ type CustomerRow = {
   normalized_phone: string;
 };
 
-export function evaluateGuards(req: SendRequest): SendDecision {
+export async function evaluateGuards(req: SendRequest): Promise<SendDecision> {
   if (req.bypassGuards) return { allowed: true };
 
   const customer = req.customerId
-    ? get<CustomerRow>("SELECT id, opt_out_status, whatsapp_status, normalized_phone FROM customers WHERE id = ? AND merchant_id = ?", [
+    ? await get<CustomerRow>("SELECT id, opt_out_status, whatsapp_status, normalized_phone FROM customers WHERE id = ? AND merchant_id = ?", [
         req.customerId,
         req.merchantId,
       ])
@@ -98,7 +98,7 @@ export function evaluateGuards(req: SendRequest): SendDecision {
   // 1. Opt-out (marketing is always blocked; utility follows merchant setting).
   if (customer?.opt_out_status) {
     const category = req.templateId
-      ? get<{ category: string }>("SELECT category FROM whatsapp_templates WHERE id = ? AND merchant_id = ?", [req.templateId, req.merchantId])?.category
+      ? (await get<{ category: string }>("SELECT category FROM whatsapp_templates WHERE id = ? AND merchant_id = ?", [req.templateId, req.merchantId]))?.category
       : "utility";
     if (category === "marketing") return { allowed: false, reason: "opted_out" };
     return { allowed: false, reason: "opted_out", detail: "Le client a demandé l'arrêt des messages." };
@@ -109,7 +109,7 @@ export function evaluateGuards(req: SendRequest): SendDecision {
 
   // 3. Template must exist and be approved for automated sends.
   if (req.templateId) {
-    const tpl = get<{ status: string }>("SELECT status FROM whatsapp_templates WHERE id = ? AND merchant_id = ?", [req.templateId, req.merchantId]);
+    const tpl = await get<{ status: string }>("SELECT status FROM whatsapp_templates WHERE id = ? AND merchant_id = ?", [req.templateId, req.merchantId]);
     if (!tpl) return { allowed: false, reason: "template_missing" };
     if (tpl.status !== "approved") return { allowed: false, reason: "template_not_approved" };
   } else if (!req.text) {
@@ -119,7 +119,7 @@ export function evaluateGuards(req: SendRequest): SendDecision {
   // 4. Duplicate suppression on the dedupe key.
   const key = dedupeKey(req);
   if (key) {
-    const dup = get<{ id: string }>("SELECT id FROM whatsapp_messages WHERE merchant_id = ? AND dedupe_key = ?", [req.merchantId, key]);
+    const dup = await get<{ id: string }>("SELECT id FROM whatsapp_messages WHERE merchant_id = ? AND dedupe_key = ?", [req.merchantId, key]);
     if (dup) return { allowed: false, reason: "duplicate" };
   }
 
@@ -127,7 +127,7 @@ export function evaluateGuards(req: SendRequest): SendDecision {
   const urgent = req.eventKey && URGENT_EVENTS.includes(req.eventKey as AutomationType);
   const cooldown = req.cooldownMinutes ?? 180;
   if (!urgent && cooldown > 0 && req.customerId) {
-    const last = get<{ created_at: string }>(
+    const last = await get<{ created_at: string }>(
       `SELECT created_at FROM whatsapp_messages
        WHERE merchant_id = ? AND customer_id = ? AND direction = 'outbound' AND kind = 'template'
        ORDER BY created_at DESC LIMIT 1`,
@@ -141,7 +141,7 @@ export function evaluateGuards(req: SendRequest): SendDecision {
   // 6. Frequency cap per order.
   if (req.orderId) {
     const max = req.maxPerOrder ?? 5;
-    const c = get<{ c: number }>(
+    const c = await get<{ c: number }>(
       "SELECT COUNT(*) AS c FROM whatsapp_messages WHERE merchant_id = ? AND order_id = ? AND direction = 'outbound'",
       [req.merchantId, req.orderId],
     );
@@ -151,7 +151,7 @@ export function evaluateGuards(req: SendRequest): SendDecision {
   // 7. If the customer replied in the last 15 min, let a human handle it
   //    instead of stacking an automated template on top.
   if (!urgent && req.customerId) {
-    const reply = get<{ created_at: string }>(
+    const reply = await get<{ created_at: string }>(
       "SELECT created_at FROM whatsapp_messages WHERE merchant_id = ? AND customer_id = ? AND direction = 'inbound' ORDER BY created_at DESC LIMIT 1",
       [req.merchantId, req.customerId],
     );
@@ -173,19 +173,19 @@ function minutesSince(sqlTime: string): number {
 }
 
 /** Ensures a conversation row exists and returns it. */
-export function ensureConversation(merchantId: string, phone: string, customerId?: string | null, orderId?: string | null) {
-  const existing = get<{ id: string }>("SELECT id FROM whatsapp_conversations WHERE merchant_id = ? AND normalized_phone = ?", [merchantId, phone]);
+export async function ensureConversation(merchantId: string, phone: string, customerId?: string | null, orderId?: string | null) {
+  const existing = await get<{ id: string }>("SELECT id FROM whatsapp_conversations WHERE merchant_id = ? AND normalized_phone = ?", [merchantId, phone]);
   if (existing) return existing.id;
   const id = uid("cnv");
-  run(
+  await run(
     "INSERT INTO whatsapp_conversations (id, merchant_id, customer_id, order_id, normalized_phone, last_message_at) VALUES (?,?,?,?,?,?)",
     [id, merchantId, customerId ?? null, orderId ?? null, phone, nowIso()],
   );
   return id;
 }
 
-export function serviceWindowOpen(conversationId: string): boolean {
-  const row = get<{ last_inbound_at: string | null }>("SELECT last_inbound_at FROM whatsapp_conversations WHERE id = ?", [conversationId]);
+export async function serviceWindowOpen(conversationId: string): Promise<boolean> {
+  const row = await get<{ last_inbound_at: string | null }>("SELECT last_inbound_at FROM whatsapp_conversations WHERE id = ?", [conversationId]);
   if (!row?.last_inbound_at) return false;
   return minutesSince(row.last_inbound_at) < 24 * 60;
 }
@@ -194,14 +194,14 @@ export function serviceWindowOpen(conversationId: string): boolean {
  * Queue an outbound message after passing the guard chain.
  * Actual API delivery happens in the background worker (retry-safe).
  */
-export function queueMessage(req: SendRequest): SendOutcome {
-  const decision = evaluateGuards(req);
-  const conversationId = ensureConversation(req.merchantId, req.toPhone, req.customerId, req.orderId);
+export async function queueMessage(req: SendRequest): Promise<SendOutcome> {
+  const decision = await evaluateGuards(req);
+  const conversationId = await ensureConversation(req.merchantId, req.toPhone, req.customerId, req.orderId);
 
   if (!decision.allowed) {
     if (req.automationId) {
-      run("UPDATE automations SET suppressed_count = suppressed_count + 1 WHERE id = ?", [req.automationId]);
-      run(
+      await run("UPDATE automations SET suppressed_count = suppressed_count + 1 WHERE id = ?", [req.automationId]);
+      await run(
         "INSERT INTO automation_runs (id, merchant_id, automation_id, order_id, trigger, result, reason, details) VALUES (?,?,?,?,?,?,?,?)",
         [uid("run"), req.merchantId, req.automationId, req.orderId ?? null, req.eventKey ?? "manual", "suppressed", decision.reason, decision.detail ?? null],
       );
@@ -213,7 +213,7 @@ export function queueMessage(req: SendRequest): SendOutcome {
   let templateName: string | null = null;
   let language = "fr";
   if (req.templateId) {
-    const tpl = get<{ name: string; body: string; language: string }>("SELECT name, body, language FROM whatsapp_templates WHERE id = ?", [req.templateId]);
+    const tpl = await get<{ name: string; body: string; language: string }>("SELECT name, body, language FROM whatsapp_templates WHERE id = ?", [req.templateId]);
     if (!tpl) return { status: "suppressed", reason: "template_missing" };
     templateName = tpl.name;
     language = tpl.language;
@@ -221,7 +221,7 @@ export function queueMessage(req: SendRequest): SendOutcome {
   }
 
   const id = uid("msg");
-  run(
+  await run(
     `INSERT INTO whatsapp_messages
       (id, merchant_id, conversation_id, order_id, customer_id, direction, kind, template_id, template_name, body, status, queued_at, automation_id, dedupe_key, is_test)
      VALUES (?,?,?,?,?,'outbound',?,?,?,?, 'queued', ?, ?, ?, ?)`,
@@ -242,9 +242,9 @@ export function queueMessage(req: SendRequest): SendOutcome {
     ],
   );
 
-  run("UPDATE whatsapp_conversations SET last_message_at = ?, last_message_preview = ? WHERE id = ?", [nowIso(), body.slice(0, 140), conversationId]);
+  await run("UPDATE whatsapp_conversations SET last_message_at = ?, last_message_preview = ? WHERE id = ?", [nowIso(), body.slice(0, 140), conversationId]);
   if (req.orderId) {
-    run("UPDATE orders SET last_message_at = ?, whatsapp_status = 'queued', updated_at = ? WHERE id = ? AND merchant_id = ?", [
+    await run("UPDATE orders SET last_message_at = ?, whatsapp_status = 'queued', updated_at = ? WHERE id = ? AND merchant_id = ?", [
       nowIso(),
       nowIso(),
       req.orderId,
@@ -252,14 +252,14 @@ export function queueMessage(req: SendRequest): SendOutcome {
     ]);
   }
 
-  enqueueJob({ merchantId: req.merchantId, type: "send_whatsapp", payload: { messageId: id } });
-  bumpUsage(req.merchantId, "messages");
+  await enqueueJob({ merchantId: req.merchantId, type: "send_whatsapp", payload: { messageId: id } });
+  await bumpUsage(req.merchantId, "messages");
   return { status: "queued", messageId: id };
 }
 
 /** Executed by the worker. */
 export async function deliverQueuedMessage(messageId: string): Promise<{ ok: boolean; error?: string }> {
-  const msg = get<{
+  const msg = await get<{
     id: string;
     merchant_id: string;
     order_id: string | null;
@@ -275,40 +275,40 @@ export async function deliverQueuedMessage(messageId: string): Promise<{ ok: boo
   if (msg.status !== "queued") return { ok: true };
 
   const conv = msg.conversation_id
-    ? get<{ normalized_phone: string }>("SELECT normalized_phone FROM whatsapp_conversations WHERE id = ?", [msg.conversation_id])
+    ? await get<{ normalized_phone: string }>("SELECT normalized_phone FROM whatsapp_conversations WHERE id = ?", [msg.conversation_id])
     : null;
   const to = conv?.normalized_phone;
   if (!to) return { ok: false, error: "Destinataire inconnu." };
 
-  const { provider } = getWhatsappProvider(msg.merchant_id);
+  const { provider } = await getWhatsappProvider(msg.merchant_id);
   const result =
     msg.kind === "template" && msg.template_name
       ? await provider.sendTemplate(to, msg.template_name, "fr", [], msg.body)
       : await provider.sendText(to, msg.body);
 
-  run("UPDATE whatsapp_messages SET attempts = attempts + 1 WHERE id = ?", [messageId]);
+  await run("UPDATE whatsapp_messages SET attempts = attempts + 1 WHERE id = ?", [messageId]);
 
   if (result.ok) {
-    run("UPDATE whatsapp_messages SET status = 'sent', sent_at = ?, wa_message_id = ?, error_code = NULL, error_message = NULL WHERE id = ?", [
+    await run("UPDATE whatsapp_messages SET status = 'sent', sent_at = ?, wa_message_id = ?, error_code = NULL, error_message = NULL WHERE id = ?", [
       nowIso(),
       result.waMessageId,
       messageId,
     ]);
-    if (msg.order_id) run("UPDATE orders SET whatsapp_status = 'sent' WHERE id = ?", [msg.order_id]);
-    run("UPDATE whatsapp_connections SET last_message_at = ? WHERE merchant_id = ?", [nowIso(), msg.merchant_id]);
+    if (msg.order_id) await run("UPDATE orders SET whatsapp_status = 'sent' WHERE id = ?", [msg.order_id]);
+    await run("UPDATE whatsapp_connections SET last_message_at = ? WHERE merchant_id = ?", [nowIso(), msg.merchant_id]);
     return { ok: true };
   }
 
-  run("UPDATE whatsapp_messages SET error_code = ?, error_message = ? WHERE id = ?", [result.errorCode, result.errorMessage, messageId]);
+  await run("UPDATE whatsapp_messages SET error_code = ?, error_message = ? WHERE id = ?", [result.errorCode, result.errorMessage, messageId]);
   return { ok: false, error: result.errorMessage };
 }
 
-export function markMessageFailed(messageId: string, error: string) {
-  const msg = get<{ merchant_id: string; order_id: string | null }>("SELECT merchant_id, order_id FROM whatsapp_messages WHERE id = ?", [messageId]);
-  run("UPDATE whatsapp_messages SET status = 'failed', failed_at = ?, error_message = ? WHERE id = ?", [nowIso(), error.slice(0, 400), messageId]);
+export async function markMessageFailed(messageId: string, error: string) {
+  const msg = await get<{ merchant_id: string; order_id: string | null }>("SELECT merchant_id, order_id FROM whatsapp_messages WHERE id = ?", [messageId]);
+  await run("UPDATE whatsapp_messages SET status = 'failed', failed_at = ?, error_message = ? WHERE id = ?", [nowIso(), error.slice(0, 400), messageId]);
   if (!msg) return;
-  if (msg.order_id) run("UPDATE orders SET whatsapp_status = 'failed', attention = 1 WHERE id = ?", [msg.order_id]);
-  notify({
+  if (msg.order_id) await run("UPDATE orders SET whatsapp_status = 'failed', attention = 1 WHERE id = ?", [msg.order_id]);
+  await notify({
     merchantId: msg.merchant_id,
     type: "message_failed",
     severity: "error",
@@ -318,9 +318,9 @@ export function markMessageFailed(messageId: string, error: string) {
   });
 }
 
-export function bumpUsage(merchantId: string, metric: "orders" | "messages" | "delivery_api_calls") {
+export async function bumpUsage(merchantId: string, metric: "orders" | "messages" | "delivery_api_calls") {
   const period = new Date().toISOString().slice(0, 7);
-  run(
+  await run(
     `INSERT INTO usage_records (id, merchant_id, period, metric, value, updated_at)
      VALUES (?,?,?,?,1,?)
      ON CONFLICT(merchant_id, period, metric) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at`,
@@ -344,8 +344,8 @@ export function classifyReply(text: string): "yes" | "no" | "other" {
   return "other";
 }
 
-export function recentSuppressions(merchantId: string, limit = 20) {
-  return all(
+export async function recentSuppressions(merchantId: string, limit = 20) {
+  return await all(
     `SELECT ar.*, a.name AS automation_name FROM automation_runs ar
      LEFT JOIN automations a ON a.id = ar.automation_id
      WHERE ar.merchant_id = ? AND ar.result = 'suppressed'

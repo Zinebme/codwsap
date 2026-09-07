@@ -143,20 +143,20 @@ function MerchantDrawer({ id, onClose, onChanged }: { id: string; onClose: () =>
         m && (
           <div className="flex flex-wrap gap-2">
             {m.status !== "active" ? (
-              <Button variant="primary" loading={busy} onClick={() => act({ action: "activate" })}>Activer</Button>
+              <Button variant="primary" loading={busy} onClick={async () => await act({ action: "activate" })}>Activer</Button>
             ) : (
-              <Button variant="ghost" className="text-red-600 hover:bg-red-50" loading={busy} onClick={() => { const reason = prompt("Motif de la suspension ?") ?? undefined; act({ action: "suspend", reason }); }}>
+              <Button variant="ghost" className="text-red-600 hover:bg-red-50" loading={busy} onClick={async () => { const reason = prompt("Motif de la suspension ?") ?? undefined; await act({ action: "suspend", reason }); }}>
                 Suspendre
               </Button>
             )}
             <Select
               className="h-8 w-auto py-0 text-[12.5px]"
               value={String(m.plan_code)}
-              onChange={(e) => act({ action: "change_plan", planCode: e.target.value })}
+              onChange={async (e) => await act({ action: "change_plan", planCode: e.target.value })}
             >
               {plansData?.rows.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
             </Select>
-            <Button loading={busy} onClick={() => act({ action: "reset_usage" })}>Réinitialiser l&apos;usage du mois</Button>
+            <Button loading={busy} onClick={async () => await act({ action: "reset_usage" })}>Réinitialiser l&apos;usage du mois</Button>
           </div>
         )
       }

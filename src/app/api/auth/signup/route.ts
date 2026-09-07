@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     rateLimit(`signup:${ip}`, 5, 60_000);
     const body = await parseBody(req, schema);
 
-    if (get("SELECT id FROM users WHERE email = ?", [body.email.toLowerCase()])) {
+    if (await get("SELECT id FROM users WHERE email = ?", [body.email.toLowerCase()])) {
       return ok({ error: "Un compte existe déjà avec cet email." }, { status: 409 });
     }
 
@@ -32,34 +32,34 @@ export async function POST(req: Request) {
     const passwordHash = await hashPassword(body.password);
     const phone = normalizeDzPhone(body.phone);
 
-    tx(() => {
-      run("INSERT INTO users (id, email, password_hash, full_name, phone) VALUES (?,?,?,?,?)", [
+    await tx(async () => {
+      await run("INSERT INTO users (id, email, password_hash, full_name, phone) VALUES (?,?,?,?,?)", [
         userId,
         body.email.toLowerCase(),
         passwordHash,
         body.fullName,
         phone.normalized,
       ]);
-      run(
+      await run(
         `INSERT INTO merchants (id, name, slug, status, plan_code, phone, email, trial_ends_at)
          VALUES (?,?,?, 'trial', 'trial', ?,?,?)`,
         [merchantId, body.business, slug, phone.normalized, body.email.toLowerCase(), new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10)],
       );
-      run("INSERT INTO merchant_users (id, merchant_id, user_id, role, status) VALUES (?,?,?, 'owner', 'active')", [uid("mus"), merchantId, userId]);
-      run("INSERT INTO subscriptions (id, merchant_id, plan_code, status, period_end) VALUES (?,?, 'trial', 'trialing', ?)", [
+      await run("INSERT INTO merchant_users (id, merchant_id, user_id, role, status) VALUES (?,?,?, 'owner', 'active')", [uid("mus"), merchantId, userId]);
+      await run("INSERT INTO subscriptions (id, merchant_id, plan_code, status, period_end) VALUES (?,?, 'trial', 'trialing', ?)", [
         uid("sub"),
         merchantId,
         new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
       ]);
-      seedAutomations(merchantId);
-      seedTemplates(merchantId);
+      await seedAutomations(merchantId);
+      await seedTemplates(merchantId);
     });
 
     await createSession(userId);
     const jar = await cookies();
     jar.set("codwsap_merchant", merchantId, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7 });
 
-    audit({ merchantId, actorId: userId, actorLabel: body.email, action: "merchant.created", resource: "merchant", resourceId: merchantId, ip });
+    await audit({ merchantId, actorId: userId, actorLabel: body.email, action: "merchant.created", resource: "merchant", resourceId: merchantId, ip });
     return ok({ ok: true, merchantId, createdAt: nowIso() });
   } catch (e) {
     return jsonError(e);

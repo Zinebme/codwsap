@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const ctx = await requireTenant();
-    return ok({ rows: all("SELECT * FROM whatsapp_templates WHERE merchant_id = ? ORDER BY updated_at DESC", [ctx.merchantId]) });
+    return ok({ rows: await all("SELECT * FROM whatsapp_templates WHERE merchant_id = ? ORDER BY updated_at DESC", [ctx.merchantId]) });
   } catch (e) {
     return jsonError(e);
   }
@@ -30,12 +30,12 @@ export async function POST(req: Request) {
     const body = await parseBody(req, schema);
     const id = uid("tpl");
     const variables = Array.from(body.body.matchAll(/\{\{\s*([\w\d_]+)\s*\}\}/g)).map((m) => m[1]);
-    run(
+    await run(
       `INSERT INTO whatsapp_templates (id, merchant_id, name, category, language, status, body, variables, buttons, event_key)
        VALUES (?,?,?,?,?, 'draft', ?, ?, ?, ?)`,
       [id, ctx.merchantId, body.name, body.category, body.language, body.body, JSON.stringify(variables), JSON.stringify(body.buttons ?? []), body.eventKey ?? null],
     );
-    audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "template.created", resource: "template", resourceId: id, ip: await clientIp() });
+    await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "template.created", resource: "template", resourceId: id, ip: await clientIp() });
     return ok({ ok: true, id, updatedAt: nowIso() }, { status: 201 });
   } catch (e) {
     return jsonError(e);

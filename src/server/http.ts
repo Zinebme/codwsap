@@ -45,18 +45,18 @@ export function rateLimit(key: string, limit: number, windowMs: number) {
 }
 
 /** Records a webhook event and enforces idempotency. */
-export function recordWebhook(params: {
+export async function recordWebhook(params: {
   merchantId?: string | null;
   source: string;
   provider?: string | null;
   idempotencyKey: string;
   signatureValid?: boolean | null;
   payload: unknown;
-}): { duplicate: boolean; id: string } {
-  const existing = get<{ id: string }>("SELECT id FROM webhook_events WHERE source = ? AND idempotency_key = ?", [params.source, params.idempotencyKey]);
+}): Promise<{ duplicate: boolean; id: string }> {
+  const existing = await get<{ id: string }>("SELECT id FROM webhook_events WHERE source = ? AND idempotency_key = ?", [params.source, params.idempotencyKey]);
   if (existing) return { duplicate: true, id: existing.id };
   const id = uid("whk");
-  run(
+  await run(
     `INSERT INTO webhook_events (id, merchant_id, source, provider, idempotency_key, signature_valid, status, payload)
      VALUES (?,?,?,?,?,?, 'received', ?)`,
     [
@@ -72,6 +72,6 @@ export function recordWebhook(params: {
   return { duplicate: false, id };
 }
 
-export function markWebhook(id: string, status: "processed" | "failed" | "duplicate", error?: string) {
-  run("UPDATE webhook_events SET status = ?, error = ? WHERE id = ?", [status, error?.slice(0, 400) ?? null, id]);
+export async function markWebhook(id: string, status: "processed" | "failed" | "duplicate", error?: string) {
+  await run("UPDATE webhook_events SET status = ?, error = ? WHERE id = ?", [status, error?.slice(0, 400) ?? null, id]);
 }

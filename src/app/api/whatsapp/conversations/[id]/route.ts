@@ -11,17 +11,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const ctx = await requirePermission("conversations.read");
     const { id } = await params;
-    const conv = get<{ id: string; customer_id: string | null; order_id: string | null; normalized_phone: string }>(
+    const conv = await get<{ id: string; customer_id: string | null; order_id: string | null; normalized_phone: string }>(
       "SELECT * FROM whatsapp_conversations WHERE id = ? AND merchant_id = ?",
       [id, ctx.merchantId],
     );
     if (!conv) throw new HttpError(404, "Conversation introuvable.", "not_found");
-    run("UPDATE whatsapp_conversations SET unread_count = 0 WHERE id = ?", [id]);
+    await run("UPDATE whatsapp_conversations SET unread_count = 0 WHERE id = ?", [id]);
     return ok({
       conversation: conv,
-      customer: conv.customer_id ? get("SELECT * FROM customers WHERE id = ? AND merchant_id = ?", [conv.customer_id, ctx.merchantId]) : null,
-      windowOpen: serviceWindowOpen(id),
-      messages: all("SELECT * FROM whatsapp_messages WHERE conversation_id = ? AND merchant_id = ? ORDER BY created_at ASC LIMIT 300", [id, ctx.merchantId]),
+      customer: conv.customer_id ? await get("SELECT * FROM customers WHERE id = ? AND merchant_id = ?", [conv.customer_id, ctx.merchantId]) : null,
+      windowOpen: await serviceWindowOpen(id),
+      messages: await all("SELECT * FROM whatsapp_messages WHERE conversation_id = ? AND merchant_id = ? ORDER BY created_at ASC LIMIT 300", [id, ctx.merchantId]),
     });
   } catch (e) {
     return jsonError(e);
@@ -34,13 +34,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const ctx = await requirePermission("conversations.write");
     const { id } = await params;
-    const conv = get<{ id: string; customer_id: string | null; order_id: string | null; normalized_phone: string }>(
+    const conv = await get<{ id: string; customer_id: string | null; order_id: string | null; normalized_phone: string }>(
       "SELECT * FROM whatsapp_conversations WHERE id = ? AND merchant_id = ?",
       [id, ctx.merchantId],
     );
     if (!conv) throw new HttpError(404, "Conversation introuvable.", "not_found");
     const body = await parseBody(req, schema);
-    const windowOpen = serviceWindowOpen(id);
+    const windowOpen = await serviceWindowOpen(id);
 
     if (body.text && !windowOpen) {
       throw new HttpError(
@@ -49,7 +49,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         "window_closed",
       );
     }
-    const outcome = queueMessage({
+    const outcome = await queueMessage({
       merchantId: ctx.merchantId,
       orderId: conv.order_id,
       customerId: conv.customer_id,
@@ -59,7 +59,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       eventKey: "manual",
       bypassGuards: !!body.text && windowOpen,
     });
-    run("UPDATE whatsapp_conversations SET last_message_at = ? WHERE id = ?", [nowIso(), id]);
+    await run("UPDATE whatsapp_conversations SET last_message_at = ? WHERE id = ?", [nowIso(), id]);
     void runWorker(3);
     return ok(outcome);
   } catch (e) {

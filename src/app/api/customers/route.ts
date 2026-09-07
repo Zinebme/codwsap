@@ -29,12 +29,12 @@ export async function GET(req: Request) {
       params.push(wa);
     }
     const whereSql = where.join(" AND ");
-    const rows = all(`SELECT * FROM customers WHERE ${whereSql} ORDER BY last_order_at DESC NULLS LAST, created_at DESC LIMIT ? OFFSET ?`, [
+    const rows = await all(`SELECT * FROM customers WHERE ${whereSql} ORDER BY last_order_at DESC NULLS LAST, created_at DESC LIMIT ? OFFSET ?`, [
       ...params,
       pageSize,
       (page - 1) * pageSize,
     ]);
-    const total = get<{ c: number }>(`SELECT COUNT(*) AS c FROM customers WHERE ${whereSql}`, params)?.c ?? 0;
+    const total = (await get<{ c: number }>(`SELECT COUNT(*) AS c FROM customers WHERE ${whereSql}`, params))?.c ?? 0;
     return ok({ rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) });
   } catch (e) {
     return jsonError(e);

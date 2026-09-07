@@ -58,9 +58,9 @@ export const TEMPLATE_SEEDS: Seed[] = [
   { name: "satisfaction_request", event: null, category: "marketing", body: "Bonjour {{1}}, êtes-vous satisfait de votre commande {{2}} ? Votre avis nous aide beaucoup. Répondez STOP pour ne plus recevoir ce type de message.", variables: ["customer_name", "order_ref"] },
 ];
 
-export function seedTemplates(merchantId: string) {
+export async function seedTemplates(merchantId: string) {
   for (const t of TEMPLATE_SEEDS) {
-    run(
+    await run(
       `INSERT OR IGNORE INTO whatsapp_templates (id, merchant_id, name, category, language, status, body, variables, event_key)
        VALUES (?,?,?,?, 'fr', 'draft', ?, ?, ?)`,
       [uid("tpl"), merchantId, t.name, t.category, t.body, JSON.stringify(t.variables), t.event],

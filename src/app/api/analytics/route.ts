@@ -11,9 +11,9 @@ export async function GET(req: Request) {
     const range = rangeFromPreset(p.get("preset") ?? "30d", p.get("from") ?? undefined, p.get("to") ?? undefined);
     return ok({
       range,
-      kpi: merchantKpis(ctx.merchantId, range),
-      ordersByDay: ordersByDay(ctx.merchantId, range),
-      messagesByDay: messagesByDay(ctx.merchantId, range),
+      kpi: await merchantKpis(ctx.merchantId, range),
+      ordersByDay: await ordersByDay(ctx.merchantId, range),
+      messagesByDay: await messagesByDay(ctx.merchantId, range),
     });
   } catch (e) {
     return jsonError(e);

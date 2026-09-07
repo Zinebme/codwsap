@@ -11,15 +11,15 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const ctx = await requireTenant();
-    const merchant = get<{ onboarding_step: number; onboarding_completed_at: string | null; name: string; phone: string | null; wilaya: string | null; address: string | null }>(
+    const merchant = await get<{ onboarding_step: number; onboarding_completed_at: string | null; name: string; phone: string | null; wilaya: string | null; address: string | null }>(
       "SELECT onboarding_step, onboarding_completed_at, name, phone, wilaya, address FROM merchants WHERE id = ?",
       [ctx.merchantId],
     );
-    const whatsapp = get<{ status: string }>("SELECT status FROM whatsapp_connections WHERE merchant_id = ?", [ctx.merchantId]);
-    const delivery = get<{ c: number }>("SELECT COUNT(*) AS c FROM delivery_connections WHERE merchant_id = ?", [ctx.merchantId]);
-    const source = get<{ c: number }>("SELECT COUNT(*) AS c FROM integrations WHERE merchant_id = ? AND kind IN ('google_sheets','webhook')", [ctx.merchantId]);
-    const orders = get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ?", [ctx.merchantId]);
-    const templates = get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_templates WHERE merchant_id = ? AND status = 'approved'", [ctx.merchantId]);
+    const whatsapp = await get<{ status: string }>("SELECT status FROM whatsapp_connections WHERE merchant_id = ?", [ctx.merchantId]);
+    const delivery = await get<{ c: number }>("SELECT COUNT(*) AS c FROM delivery_connections WHERE merchant_id = ?", [ctx.merchantId]);
+    const source = await get<{ c: number }>("SELECT COUNT(*) AS c FROM integrations WHERE merchant_id = ? AND kind IN ('google_sheets','webhook')", [ctx.merchantId]);
+    const orders = await get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ?", [ctx.merchantId]);
+    const templates = await get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_templates WHERE merchant_id = ? AND status = 'approved'", [ctx.merchantId]);
     return ok({
       merchant,
       progress: {
@@ -50,10 +50,10 @@ export async function POST(req: Request) {
     const body = await parseBody(req, schema);
     switch (body.action) {
       case "step":
-        run("UPDATE merchants SET onboarding_step = ?, updated_at = ? WHERE id = ?", [body.step, nowIso(), ctx.merchantId]);
+        await run("UPDATE merchants SET onboarding_step = ?, updated_at = ? WHERE id = ?", [body.step, nowIso(), ctx.merchantId]);
         return ok({ ok: true });
       case "business":
-        run("UPDATE merchants SET name = ?, phone = ?, wilaya = ?, address = ?, onboarding_step = 2, updated_at = ? WHERE id = ?", [
+        await run("UPDATE merchants SET name = ?, phone = ?, wilaya = ?, address = ?, onboarding_step = 2, updated_at = ? WHERE id = ?", [
           body.name,
           body.phone,
           body.wilaya,
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
         ]);
         return ok({ ok: true });
       case "test_order": {
-        const res = createOrder({
+        const res = await createOrder({
           merchantId: ctx.merchantId,
           customerName: "Client de test",
           phone: "0550000000",
@@ -82,12 +82,12 @@ export async function POST(req: Request) {
         return ok({ ok: true, ...res });
       }
       case "complete":
-        run("UPDATE merchants SET onboarding_completed_at = ?, onboarding_step = 8, status = CASE WHEN status = 'trial' THEN 'trial' ELSE status END, updated_at = ? WHERE id = ?", [
+        await run("UPDATE merchants SET onboarding_completed_at = ?, onboarding_step = 8, status = CASE WHEN status = 'trial' THEN 'trial' ELSE status END, updated_at = ? WHERE id = ?", [
           nowIso(),
           nowIso(),
           ctx.merchantId,
         ]);
-        audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "merchant.onboarding_completed" });
+        await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "merchant.onboarding_completed" });
         return ok({ ok: true });
     }
   } catch (e) {

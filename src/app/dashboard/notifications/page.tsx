@@ -62,7 +62,7 @@ export default function NotificationsPage() {
                     {n.body && <p className="mt-0.5 text-[12.5px] text-ink-600">{n.body}</p>}
                     <p className="mt-0.5 text-[11px] text-ink-400">{f.dateTime(n.created_at)}</p>
                   </div>
-                  <button onClick={(e) => { e.preventDefault(); toggleRead(n); }} className="shrink-0 text-[11.5px] text-ink-400 hover:text-ink-700">
+                  <button onClick={async (e) => { e.preventDefault(); await toggleRead(n); }} className="shrink-0 text-[11.5px] text-ink-400 hover:text-ink-700">
                     {n.read_at ? (ar ? "تعليم كغير مقروء" : "Marquer non lu") : ar ? "تعليم كمقروء" : "Marquer lu"}
                   </button>
                 </div>

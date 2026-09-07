@@ -12,13 +12,13 @@ export async function GET(req: Request) {
     if (!q || q.length < 2) return ok({ orders: [], customers: [] });
     const like = `%${q}%`;
     return ok({
-      orders: all(
+      orders: await all(
         `SELECT id, reference, customer_name, total, status, tracking_number FROM orders
          WHERE merchant_id = ? AND (reference LIKE ? OR customer_name LIKE ? OR normalized_phone LIKE ? OR original_phone LIKE ? OR tracking_number LIKE ?)
          ORDER BY created_at DESC LIMIT 6`,
         [ctx.merchantId, like, like, like, like, like],
       ),
-      customers: all(
+      customers: await all(
         `SELECT id, full_name, normalized_phone, total_orders FROM customers
          WHERE merchant_id = ? AND (full_name LIKE ? OR normalized_phone LIKE ? OR original_phone LIKE ?)
          ORDER BY last_order_at DESC LIMIT 5`,

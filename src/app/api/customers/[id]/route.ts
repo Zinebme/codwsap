@@ -10,13 +10,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const ctx = await requirePermission("customers.read");
     const { id } = await params;
-    const customer = get("SELECT * FROM customers WHERE id = ? AND merchant_id = ?", [id, ctx.merchantId]);
+    const customer = await get("SELECT * FROM customers WHERE id = ? AND merchant_id = ?", [id, ctx.merchantId]);
     if (!customer) throw new HttpError(404, "Client introuvable.", "not_found");
     return ok({
       customer,
-      orders: all("SELECT id, reference, created_at, status, total, tracking_number FROM orders WHERE customer_id = ? AND merchant_id = ? ORDER BY created_at DESC LIMIT 50", [id, ctx.merchantId]),
-      messages: all("SELECT id, direction, body, status, created_at, template_name FROM whatsapp_messages WHERE customer_id = ? AND merchant_id = ? ORDER BY created_at DESC LIMIT 50", [id, ctx.merchantId]),
-      consents: all("SELECT * FROM customer_consents WHERE customer_id = ? AND merchant_id = ? ORDER BY created_at DESC LIMIT 20", [id, ctx.merchantId]),
+      orders: await all("SELECT id, reference, created_at, status, total, tracking_number FROM orders WHERE customer_id = ? AND merchant_id = ? ORDER BY created_at DESC LIMIT 50", [id, ctx.merchantId]),
+      messages: await all("SELECT id, direction, body, status, created_at, template_name FROM whatsapp_messages WHERE customer_id = ? AND merchant_id = ? ORDER BY created_at DESC LIMIT 50", [id, ctx.merchantId]),
+      consents: await all("SELECT * FROM customer_consents WHERE customer_id = ? AND merchant_id = ? ORDER BY created_at DESC LIMIT 20", [id, ctx.merchantId]),
     });
   } catch (e) {
     return jsonError(e);
@@ -34,21 +34,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const ctx = await requirePermission("customers.write");
     const { id } = await params;
-    const customer = get<{ id: string; normalized_phone: string }>("SELECT id, normalized_phone FROM customers WHERE id = ? AND merchant_id = ?", [id, ctx.merchantId]);
+    const customer = await get<{ id: string; normalized_phone: string }>("SELECT id, normalized_phone FROM customers WHERE id = ? AND merchant_id = ?", [id, ctx.merchantId]);
     if (!customer) throw new HttpError(404, "Client introuvable.", "not_found");
     const body = await parseBody(req, schema);
 
     if (body.action === "note") {
-      run("UPDATE customers SET notes = ?, updated_at = ? WHERE id = ?", [body.notes, nowIso(), id]);
+      await run("UPDATE customers SET notes = ?, updated_at = ? WHERE id = ?", [body.notes, nowIso(), id]);
       return ok({ ok: true });
     }
     if (body.action === "opt_out" || body.action === "opt_in") {
       const isOut = body.action === "opt_out";
-      run(
+      await run(
         `UPDATE customers SET opt_out_status = ?, opt_out_date = ?, opt_in_status = ?, opt_in_date = ?, opt_in_source = ?, updated_at = ? WHERE id = ?`,
         [isOut ? 1 : 0, isOut ? nowIso() : null, isOut ? "unknown" : "opted_in", isOut ? null : nowIso(), isOut ? null : "manual", nowIso(), id],
       );
-      run("INSERT INTO customer_consents (id, merchant_id, customer_id, channel, action, source) VALUES (?,?,?,'whatsapp',?,?)", [
+      await run("INSERT INTO customer_consents (id, merchant_id, customer_id, channel, action, source) VALUES (?,?,?,'whatsapp',?,?)", [
         uid("cns"),
         ctx.merchantId,
         id,
@@ -59,9 +59,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Manual WhatsApp availability recheck via the official provider only.
-    const { provider, connected } = getWhatsappProvider(ctx.merchantId);
+    const { provider, connected } = await getWhatsappProvider(ctx.merchantId);
     const res = await provider.checkAvailability(customer.normalized_phone);
-    run("UPDATE customers SET whatsapp_status = ?, whatsapp_checked_at = ?, whatsapp_check_source = ?, updated_at = ? WHERE id = ?", [
+    await run("UPDATE customers SET whatsapp_status = ?, whatsapp_checked_at = ?, whatsapp_check_source = ?, updated_at = ? WHERE id = ?", [
       res.status,
       nowIso(),
       res.source,

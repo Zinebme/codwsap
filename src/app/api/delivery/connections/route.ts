@@ -12,10 +12,10 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const ctx = await requirePermission("integrations.read");
-    const rows = all(
+    const rows = (await all(
       "SELECT id, provider, label, status, is_default, is_active, last_sync_at, last_error, last_error_at, status_mapping, created_at FROM delivery_connections WHERE merchant_id = ? ORDER BY is_default DESC, created_at",
       [ctx.merchantId],
-    ).map((r) => {
+    )).map((r) => {
       const row = r as Record<string, unknown>;
       return { ...row, capabilities: capabilitiesOf(String(row.provider)) };
     });
@@ -43,14 +43,14 @@ export async function POST(req: Request) {
       return ok({ error: "Transporteur non supporté." }, { status: 400 });
     }
     const id = uid("dlc");
-    if (body.isDefault) run("UPDATE delivery_connections SET is_default = 0 WHERE merchant_id = ?", [ctx.merchantId]);
-    run(
+    if (body.isDefault) await run("UPDATE delivery_connections SET is_default = 0 WHERE merchant_id = ?", [ctx.merchantId]);
+    await run(
       `INSERT INTO delivery_connections (id, merchant_id, provider, label, status, is_default, credentials_encrypted)
        VALUES (?,?,?,?, 'disconnected', ?, ?)`,
       [id, ctx.merchantId, body.provider, body.label, body.isDefault ? 1 : 0, encryptSecret(body.credentials)],
     );
-    enqueueJob({ merchantId: ctx.merchantId, type: "poll_delivery", runAfter: new Date(Date.now() + 5 * 60_000) });
-    audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.connected", resource: "delivery", resourceId: id, ip: await clientIp(), metadata: { provider: body.provider } });
+    await enqueueJob({ merchantId: ctx.merchantId, type: "poll_delivery", runAfter: new Date(Date.now() + 5 * 60_000) });
+    await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.connected", resource: "delivery", resourceId: id, ip: await clientIp(), metadata: { provider: body.provider } });
     return ok({ ok: true, id, createdAt: nowIso() }, { status: 201 });
   } catch (e) {
     return jsonError(e);

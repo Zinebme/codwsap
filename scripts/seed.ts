@@ -37,10 +37,10 @@ function phone(i: number) {
 }
 
 async function ensureUser(email: string, fullName: string, superAdmin = false) {
-  const existing = get<{ id: string }>("SELECT id FROM users WHERE email = ?", [email]);
+  const existing = await get<{ id: string }>("SELECT id FROM users WHERE email = ?", [email]);
   if (existing) return existing.id;
   const id = uid("usr");
-  run("INSERT INTO users (id, email, password_hash, full_name, is_super_admin) VALUES (?,?,?,?,?)", [
+  await run("INSERT INTO users (id, email, password_hash, full_name, is_super_admin) VALUES (?,?,?,?,?)", [
     id,
     email,
     await hashPassword(PASSWORD),
@@ -54,39 +54,39 @@ async function main() {
   await ensureUser(ADMIN_EMAIL, "Super Admin", true);
 
   const ownerId = await ensureUser(MERCHANT_EMAIL, "Amine Benali");
-  let merchant = get<{ id: string }>("SELECT id FROM merchants WHERE email = ?", [MERCHANT_EMAIL]);
+  let merchant = await get<{ id: string }>("SELECT id FROM merchants WHERE email = ?", [MERCHANT_EMAIL]);
   if (!merchant) {
     const id = uid("mch");
-    run(
+    await run(
       `INSERT INTO merchants (id, name, slug, status, plan_code, phone, email, wilaya, address, locale, onboarding_step, onboarding_completed_at)
        VALUES (?,?,?, 'active', 'starter', ?, ?, ?, ?, 'fr', 8, ?)`,
       [id, "Boutique Démo DZ", "boutique-demo-dz", "0550112233", MERCHANT_EMAIL, "Alger", "Rue Didouche Mourad, Alger", nowIso()],
     );
-    run("INSERT INTO merchant_users (id, merchant_id, user_id, role, status, invited_email) VALUES (?,?,?, 'owner', 'active', ?)", [uid("mus"), id, ownerId, MERCHANT_EMAIL]);
-    run("INSERT INTO subscriptions (id, merchant_id, plan_code, status) VALUES (?,?, 'starter', 'active')", [uid("sub"), id]);
+    await run("INSERT INTO merchant_users (id, merchant_id, user_id, role, status, invited_email) VALUES (?,?,?, 'owner', 'active', ?)", [uid("mus"), id, ownerId, MERCHANT_EMAIL]);
+    await run("INSERT INTO subscriptions (id, merchant_id, plan_code, status) VALUES (?,?, 'starter', 'active')", [uid("sub"), id]);
     merchant = { id };
   }
   const merchantId = merchant.id;
 
   // Team
   const agentId = await ensureUser("agent@codwsap.app", "Nadia Haddad");
-  if (!get("SELECT id FROM merchant_users WHERE merchant_id = ? AND user_id = ?", [merchantId, agentId])) {
-    run("INSERT INTO merchant_users (id, merchant_id, user_id, role, status, invited_email) VALUES (?,?,?, 'agent', 'active', ?)", [uid("mus"), merchantId, agentId, "agent@codwsap.app"]);
+  if (!await get("SELECT id FROM merchant_users WHERE merchant_id = ? AND user_id = ?", [merchantId, agentId])) {
+    await run("INSERT INTO merchant_users (id, merchant_id, user_id, role, status, invited_email) VALUES (?,?,?, 'agent', 'active', ?)", [uid("mus"), merchantId, agentId, "agent@codwsap.app"]);
   }
 
-  seedTemplates(merchantId);
-  seedAutomations(merchantId);
+  await seedTemplates(merchantId);
+  await seedAutomations(merchantId);
 
   // Sandbox transporter so tracking flows are demoable without real credentials.
-  if (!get("SELECT id FROM delivery_connections WHERE merchant_id = ? AND provider = 'sandbox'", [merchantId])) {
-    run(
+  if (!await get("SELECT id FROM delivery_connections WHERE merchant_id = ? AND provider = 'sandbox'", [merchantId])) {
+    await run(
       `INSERT INTO delivery_connections (id, merchant_id, provider, label, status, is_default, credentials_encrypted, last_sync_at)
        VALUES (?,?, 'sandbox', 'Transporteur de test', 'connected', 1, ?, ?)`,
       [uid("dlc"), merchantId, encryptSecret({ api_key: "sandbox" }), nowIso()],
     );
   }
 
-  const existingOrders = get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ?", [merchantId])?.c ?? 0;
+  const existingOrders = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM orders WHERE merchant_id = ?", [merchantId]))?.c ?? 0;
   const target = Number(process.env.SEED_ORDERS ?? 60);
   const toCreate = Math.max(0, target - existingOrders);
 
@@ -94,7 +94,7 @@ async function main() {
     const product = pick(PRODUCTS);
     const qty = 1 + (i % 3 === 0 ? 1 : 0);
     const delivery = pick([400, 500, 600, 800]);
-    const res = createOrder({
+    const res = await createOrder({
       merchantId,
       customerName: `${pick(FIRST)} ${pick(LAST)}`,
       phone: phone(i),
@@ -117,10 +117,10 @@ async function main() {
       : daysAgo > 8
         ? pick(["shipped", "in_transit", "at_office", "out_for_delivery", "delivered", "returned"] as const)
         : pick(["new", "awaiting_confirmation", "confirmed", "no_response", "cancelled_by_customer", "preparing"] as const);
-    run("UPDATE orders SET created_at = ?, order_date = ?, status = ?, updated_at = ? WHERE id = ?", [created, created.slice(0, 10), status, created, res.id]);
+    await run("UPDATE orders SET created_at = ?, order_date = ?, status = ?, updated_at = ? WHERE id = ?", [created, created.slice(0, 10), status, created, res.id]);
   }
 
-  const counts = all<{ status: string; c: number }>("SELECT status, COUNT(*) AS c FROM orders WHERE merchant_id = ? GROUP BY status", [merchantId]);
+  const counts = await all<{ status: string; c: number }>("SELECT status, COUNT(*) AS c FROM orders WHERE merchant_id = ? GROUP BY status", [merchantId]);
   console.log("Seed terminé.");
   console.log(`  Super admin : ${ADMIN_EMAIL} / ${PASSWORD}`);
   console.log(`  Marchand    : ${MERCHANT_EMAIL} / ${PASSWORD}`);

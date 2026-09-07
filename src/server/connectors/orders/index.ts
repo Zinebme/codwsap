@@ -17,7 +17,7 @@ import type { ColumnMapping } from "./fields";
 
 export type ParsedRow = Record<string, string>;
 
-export function rowsToOrders(merchantId: string, rows: ParsedRow[], mapping: ColumnMapping, source: string, sourceId?: string | null) {
+export async function rowsToOrders(merchantId: string, rows: ParsedRow[], mapping: ColumnMapping, source: string, sourceId?: string | null) {
   let created = 0;
   let duplicates = 0;
   let invalid = 0;
@@ -43,7 +43,7 @@ export function rowsToOrders(merchantId: string, rows: ParsedRow[], mapping: Col
     const place = val("delivery_place").toLowerCase();
 
     try {
-      const res = createOrder({
+      const res = await createOrder({
         merchantId,
         externalId: val("order_id") || `${source}:${index}:${phone}`,
         source,
@@ -116,7 +116,7 @@ function splitLine(line: string, delim: string): string[] {
  * credentials are stored encrypted server-side and never sent to the browser.
  */
 export async function syncGoogleSheet(merchantId: string, integrationId: string) {
-  const integ = get<{ id: string; settings: string | null; credentials_encrypted: string | null }>(
+  const integ = await get<{ id: string; settings: string | null; credentials_encrypted: string | null }>(
     "SELECT id, settings, credentials_encrypted FROM integrations WHERE id = ? AND merchant_id = ? AND kind = 'google_sheets'",
     [integrationId, merchantId],
   );
@@ -149,15 +149,15 @@ export async function syncGoogleSheet(merchantId: string, integrationId: string)
     }
   } catch (e) {
     const error = `Synchronisation impossible : ${(e as Error).message}`;
-    run("UPDATE integrations SET status = 'error', last_error = ?, last_error_at = ? WHERE id = ?", [error, nowIso(), integrationId]);
-    apiLog({ merchantId, service: "google_sheets", operation: "sync", ok: false, durationMs: Date.now() - started, error });
-    notify({ merchantId, type: "integration_disconnected", severity: "error", title: "Google Sheets : échec de synchronisation", body: error, link: "/dashboard/integrations" });
+    await run("UPDATE integrations SET status = 'error', last_error = ?, last_error_at = ? WHERE id = ?", [error, nowIso(), integrationId]);
+    await apiLog({ merchantId, service: "google_sheets", operation: "sync", ok: false, durationMs: Date.now() - started, error });
+    await notify({ merchantId, type: "integration_disconnected", severity: "error", title: "Google Sheets : échec de synchronisation", body: error, link: "/dashboard/integrations" });
     return { ok: false as const, error };
   }
 
-  const result = rowsToOrders(merchantId, rows, settings.mapping ?? {}, "google_sheets", integrationId);
-  run("UPDATE integrations SET status = 'connected', last_sync_at = ?, last_error = NULL WHERE id = ?", [nowIso(), integrationId]);
-  apiLog({ merchantId, service: "google_sheets", operation: "sync", ok: true, durationMs: Date.now() - started, statusCode: 200 });
+  const result = await rowsToOrders(merchantId, rows, settings.mapping ?? {}, "google_sheets", integrationId);
+  await run("UPDATE integrations SET status = 'connected', last_sync_at = ?, last_error = NULL WHERE id = ?", [nowIso(), integrationId]);
+  await apiLog({ merchantId, service: "google_sheets", operation: "sync", ok: true, durationMs: Date.now() - started, statusCode: 200 });
   return { ok: true as const, ...result, scanned: rows.length };
 }
 

@@ -14,9 +14,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect("/login");
   }
 
-  const wa = get<{ status: string }>("SELECT status FROM whatsapp_connections WHERE merchant_id = ?", [ctx.merchantId]);
-  const dlv = get<{ status: string }>("SELECT status FROM delivery_connections WHERE merchant_id = ? ORDER BY is_default DESC LIMIT 1", [ctx.merchantId]);
-  const src = get<{ status: string }>("SELECT status FROM integrations WHERE merchant_id = ? AND kind IN ('google_sheets','webhook') LIMIT 1", [ctx.merchantId]);
+  const wa = await get<{ status: string }>("SELECT status FROM whatsapp_connections WHERE merchant_id = ?", [ctx.merchantId]);
+  const dlv = await get<{ status: string }>("SELECT status FROM delivery_connections WHERE merchant_id = ? ORDER BY is_default DESC LIMIT 1", [ctx.merchantId]);
+  const src = await get<{ status: string }>("SELECT status FROM integrations WHERE merchant_id = ? AND kind IN ('google_sheets','webhook') LIMIT 1", [ctx.merchantId]);
 
   const me: Me = {
     user: { id: ctx.user.id, full_name: ctx.user.full_name, email: ctx.user.email },
@@ -29,7 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       onboarding_completed_at: ctx.merchant.onboarding_completed_at,
     },
     role: ctx.role,
-    memberships: membershipsFor(ctx.user.id).map((m) => ({ merchant_id: m.merchant_id, merchant_name: m.merchant_name })),
+    memberships: (await membershipsFor(ctx.user.id)).map((m) => ({ merchant_id: m.merchant_id, merchant_name: m.merchant_name })),
     health: { whatsapp: wa?.status ?? "disconnected", delivery: dlv?.status ?? "disconnected", sources: src?.status ?? "disconnected" },
   };
 

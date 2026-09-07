@@ -223,15 +223,15 @@ function CustomerDrawer({ id, onClose, onChanged }: { id: string; onClose: () =>
                     <div><p className="text-[11.5px] text-ink-400">{ar ? "مصدر التحقق" : "Source"}</p><p className="text-[13px] font-medium">{c.whatsapp_check_source ?? "—"}</p></div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button size="sm" loading={busy === "wa"} onClick={() => act({ action: "recheck_wa" }, "wa")}>
+                    <Button size="sm" loading={busy === "wa"} onClick={async () => await act({ action: "recheck_wa" }, "wa")}>
                       <RefreshCw className="h-3.5 w-3.5" /> {ar ? "إعادة التحقق من واتساب" : "Revérifier WhatsApp"}
                     </Button>
                     {c.opt_out_status ? (
-                      <Button size="sm" loading={busy === "in"} onClick={() => act({ action: "opt_in" }, "in")}>
+                      <Button size="sm" loading={busy === "in"} onClick={async () => await act({ action: "opt_in" }, "in")}>
                         <CheckCircle2 className="h-3.5 w-3.5" /> {ar ? "إعادة الاشتراك" : "Réactiver"}
                       </Button>
                     ) : (
-                      <Button size="sm" loading={busy === "out"} onClick={() => act({ action: "opt_out" }, "out")}>
+                      <Button size="sm" loading={busy === "out"} onClick={async () => await act({ action: "opt_out" }, "out")}>
                         <Ban className="h-3.5 w-3.5" /> {ar ? "إلغاء الاشتراك" : "Désinscrire"}
                       </Button>
                     )}
@@ -240,7 +240,7 @@ function CustomerDrawer({ id, onClose, onChanged }: { id: string; onClose: () =>
                 <div className="rounded-xl border border-ink-200 p-3.5">
                   <p className="mb-2 text-[12px] font-semibold uppercase text-ink-400">{ar ? "ملاحظات" : "Notes"}</p>
                   <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-                  <Button size="sm" className="mt-2" loading={busy === "note"} onClick={() => act({ action: "note", notes }, "note")}>
+                  <Button size="sm" className="mt-2" loading={busy === "note"} onClick={async () => await act({ action: "note", notes }, "note")}>
                     <StickyNote className="h-3.5 w-3.5" /> {ar ? "حفظ" : "Enregistrer"}
                   </Button>
                 </div>

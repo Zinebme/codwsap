@@ -9,7 +9,7 @@ export async function POST() {
   try {
     const ctx = await requirePermission("integrations.write");
     rateLimit(`sheet-sync:${ctx.merchantId}`, 6, 60_000);
-    const integ = get<{ id: string }>("SELECT id FROM integrations WHERE merchant_id = ? AND kind = 'google_sheets'", [ctx.merchantId]);
+    const integ = await get<{ id: string }>("SELECT id FROM integrations WHERE merchant_id = ? AND kind = 'google_sheets'", [ctx.merchantId]);
     if (!integ) return ok({ ok: false, error: "Aucune feuille Google connectée." }, { status: 400 });
     const res = await syncGoogleSheet(ctx.merchantId, integ.id);
     return ok(res);

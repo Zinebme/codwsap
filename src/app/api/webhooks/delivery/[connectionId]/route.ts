@@ -17,7 +17,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ connect
   const { connectionId } = await params;
   rateLimit(`dlv-webhook:${connectionId}`, 600, 60_000);
 
-  const conn = get<{ id: string; merchant_id: string; provider: string; credentials_encrypted: string | null }>(
+  const conn = await get<{ id: string; merchant_id: string; provider: string; credentials_encrypted: string | null }>(
     "SELECT id, merchant_id, provider, credentials_encrypted FROM delivery_connections WHERE id = ?",
     [connectionId],
   );
@@ -41,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ connect
   }
 
   const idem = crypto.createHash("sha256").update(`${connectionId}:${raw}`).digest("hex").slice(0, 40);
-  const { duplicate, id: webhookId } = recordWebhook({
+  const { duplicate, id: webhookId } = await recordWebhook({
     merchantId: conn.merchant_id,
     source: "delivery",
     provider: conn.provider,
@@ -52,13 +52,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ connect
   if (duplicate) return ok({ ok: true, duplicate: true });
 
   try {
-    const connector = connectorForConnection(conn.id, conn.merchant_id);
+    const connector = await connectorForConnection(conn.id, conn.merchant_id);
     const events = connector?.parseWebhook?.(payload) ?? genericParse(payload, connector?.normalizeStatus);
     let applied = 0;
     for (const ev of events) {
-      const order = get<{ id: string }>("SELECT id FROM orders WHERE merchant_id = ? AND tracking_number = ?", [conn.merchant_id, ev.trackingNumber]);
+      const order = await get<{ id: string }>("SELECT id FROM orders WHERE merchant_id = ? AND tracking_number = ?", [conn.merchant_id, ev.trackingNumber]);
       if (!order) continue;
-      const res = applyDeliveryEvent({
+      const res = await applyDeliveryEvent({
         merchantId: conn.merchant_id,
         orderId: order.id,
         provider: conn.provider,
@@ -70,10 +70,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ connect
       });
       if (res.applied) applied++;
     }
-    markWebhook(webhookId, "processed");
+    await markWebhook(webhookId, "processed");
     return ok({ ok: true, applied });
   } catch (e) {
-    markWebhook(webhookId, "failed", (e as Error).message);
+    await markWebhook(webhookId, "failed", (e as Error).message);
     return ok({ ok: true });
   }
 }

@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     if (direction) { where.push("m.direction = ?"); params.push(direction); }
     const whereSql = where.join(" AND ");
 
-    const rows = all(
+    const rows = await all(
       `SELECT m.*, o.reference AS order_reference, c.full_name AS customer_name, c.normalized_phone
        FROM whatsapp_messages m
        LEFT JOIN orders o ON o.id = m.order_id
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
        WHERE ${whereSql} ORDER BY m.created_at DESC LIMIT ? OFFSET ?`,
       [...params, pageSize, (page - 1) * pageSize],
     );
-    const total = get<{ c: number }>(`SELECT COUNT(*) AS c FROM whatsapp_messages m WHERE ${whereSql}`, params)?.c ?? 0;
+    const total = (await get<{ c: number }>(`SELECT COUNT(*) AS c FROM whatsapp_messages m WHERE ${whereSql}`, params))?.c ?? 0;
     return ok({ rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) });
   } catch (e) {
     return jsonError(e);

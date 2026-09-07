@@ -220,13 +220,13 @@ function OrdersInner() {
           <span className="text-[12.5px] font-medium text-brand-800">
             {selected.length} {ar ? "محدد" : "sélectionnée(s)"}
           </span>
-          <Button size="sm" onClick={() => bulk("set_status", { status: "confirmed" })}>
+          <Button size="sm" onClick={async () => await bulk("set_status", { status: "confirmed" })}>
             <CheckCircle2 className="h-3.5 w-3.5" /> {ar ? "تأكيد" : "Confirmer"}
           </Button>
-          <Button size="sm" onClick={() => bulk("set_status", { status: "cancelled_by_customer" })}>
+          <Button size="sm" onClick={async () => await bulk("set_status", { status: "cancelled_by_customer" })}>
             <XCircle className="h-3.5 w-3.5" /> {ar ? "إلغاء" : "Annuler"}
           </Button>
-          <Button size="sm" onClick={() => bulk("send_to_delivery")}>
+          <Button size="sm" onClick={async () => await bulk("send_to_delivery")}>
             <Truck className="h-3.5 w-3.5" /> {ar ? "إرسال للناقل" : "Envoyer au transporteur"}
           </Button>
           <button onClick={() => setSelected([])} className="ms-auto text-ink-500 hover:text-ink-700">
@@ -403,20 +403,20 @@ function RowActions({ id, phone, onDone, ar }: { id: string; phone?: string | nu
         </button>
       }
     >
-      <DropdownItem icon={CheckCircle2} onClick={() => act({ action: "set_status", status: "confirmed" }, ar ? "تم التأكيد" : "Commande confirmée")}>
+      <DropdownItem icon={CheckCircle2} onClick={async () => await act({ action: "set_status", status: "confirmed" }, ar ? "تم التأكيد" : "Commande confirmée")}>
         {ar ? "تأكيد" : "Confirmer"}
       </DropdownItem>
-      <DropdownItem icon={Clock} onClick={() => act({ action: "set_status", status: "postponed" }, ar ? "تم التأجيل" : "Commande reportée")}>
+      <DropdownItem icon={Clock} onClick={async () => await act({ action: "set_status", status: "postponed" }, ar ? "تم التأجيل" : "Commande reportée")}>
         {ar ? "تأجيل" : "Reporter"}
       </DropdownItem>
-      <DropdownItem icon={XCircle} danger onClick={() => act({ action: "set_status", status: "cancelled_by_customer" }, ar ? "تم الإلغاء" : "Commande annulée")}>
+      <DropdownItem icon={XCircle} danger onClick={async () => await act({ action: "set_status", status: "cancelled_by_customer" }, ar ? "تم الإلغاء" : "Commande annulée")}>
         {ar ? "إلغاء" : "Annuler"}
       </DropdownItem>
       <DropdownSeparator />
-      <DropdownItem icon={Truck} onClick={() => act({ action: "send_to_delivery" }, ar ? "أرسلت للناقل" : "Envoyée au transporteur")}>
+      <DropdownItem icon={Truck} onClick={async () => await act({ action: "send_to_delivery" }, ar ? "أرسلت للناقل" : "Envoyée au transporteur")}>
         {ar ? "إرسال للناقل" : "Envoyer au transporteur"}
       </DropdownItem>
-      <DropdownItem icon={RefreshCw} onClick={() => act({ action: "refresh_tracking" }, ar ? "تم تحديث التتبع" : "Suivi actualisé")}>
+      <DropdownItem icon={RefreshCw} onClick={async () => await act({ action: "refresh_tracking" }, ar ? "تم تحديث التتبع" : "Suivi actualisé")}>
         {ar ? "تحديث التتبع" : "Actualiser le suivi"}
       </DropdownItem>
       {phone && (

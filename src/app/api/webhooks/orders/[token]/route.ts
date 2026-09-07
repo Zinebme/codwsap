@@ -27,7 +27,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token: merchantId } = await params;
   rateLimit(`order-webhook:${merchantId}`, 300, 60_000);
 
-  const integ = get<{ id: string; credentials_encrypted: string | null }>(
+  const integ = await get<{ id: string; credentials_encrypted: string | null }>(
     "SELECT id, credentials_encrypted FROM integrations WHERE merchant_id = ? AND kind = 'webhook' AND status = 'connected'",
     [merchantId],
   );
@@ -40,13 +40,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   const raw = await req.text();
   const idem = crypto.createHash("sha256").update(`${merchantId}:${raw}`).digest("hex").slice(0, 40);
-  const { duplicate, id: webhookId } = recordWebhook({ merchantId, source: "order_source", provider: "webhook", idempotencyKey: idem, signatureValid: true, payload: raw.slice(0, 4000) });
+  const { duplicate, id: webhookId } = await recordWebhook({ merchantId, source: "order_source", provider: "webhook", idempotencyKey: idem, signatureValid: true, payload: raw.slice(0, 4000) });
   if (duplicate) return ok({ ok: true, duplicate: true });
 
   try {
     const body = schema.parse(JSON.parse(raw));
     const productsPrice = body.products_price ?? body.items?.reduce((a, i) => a + i.quantity * i.unit_price, 0) ?? 0;
-    const res = createOrder({
+    const res = await createOrder({
       merchantId,
       externalId: body.external_id ?? idem,
       source: "webhook",
@@ -61,11 +61,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       total: body.total ?? productsPrice + (body.delivery_price ?? 0),
       items: body.items?.map((i) => ({ ...i, variant: i.variant ?? null })) ?? [],
     });
-    markWebhook(webhookId, "processed");
+    await markWebhook(webhookId, "processed");
     void runWorker(5);
     return ok({ ok: true, order_id: res.id, reference: res.reference, duplicate: res.duplicated }, { status: 201 });
   } catch (e) {
-    markWebhook(webhookId, "failed", (e as Error).message);
+    await markWebhook(webhookId, "failed", (e as Error).message);
     return ok({ error: "Charge utile invalide." }, { status: 422 });
   }
 }

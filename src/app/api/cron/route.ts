@@ -16,27 +16,27 @@ export async function POST(req: Request) {
   if (secret && provided !== secret) return new Response("unauthorized", { status: 401 });
 
   // Delivery polling for merchants with active connectors that lack webhooks.
-  const merchants = all<{ merchant_id: string }>(
+  const merchants = await all<{ merchant_id: string }>(
     "SELECT DISTINCT merchant_id FROM delivery_connections WHERE is_active = 1 AND status = 'connected'",
   );
-  for (const m of merchants) enqueueJob({ merchantId: m.merchant_id, type: "poll_delivery" });
+  for (const m of merchants) await enqueueJob({ merchantId: m.merchant_id, type: "poll_delivery" });
 
   // Google Sheets auto-sync.
-  const sheets = all<{ id: string; merchant_id: string; settings: string | null }>(
+  const sheets = await all<{ id: string; merchant_id: string; settings: string | null }>(
     "SELECT id, merchant_id, settings FROM integrations WHERE kind = 'google_sheets' AND status IN ('connected','error')",
   );
   for (const s of sheets) {
     const cfg = safeJson<{ auto_sync?: boolean }>(s.settings);
-    if (cfg?.auto_sync) enqueueJob({ merchantId: s.merchant_id, type: "sync_sheet", payload: { integrationId: s.id } });
+    if (cfg?.auto_sync) await enqueueJob({ merchantId: s.merchant_id, type: "sync_sheet", payload: { integrationId: s.id } });
   }
 
   const result = await runWorker(50);
-  run("UPDATE jobs SET status = 'pending' WHERE status = 'running' AND updated_at < ?", [
+  await run("UPDATE jobs SET status = 'pending' WHERE status = 'running' AND updated_at < ?", [
     new Date(Date.now() - 15 * 60_000).toISOString().slice(0, 19).replace("T", " "),
   ]);
   return ok({ ...result, at: nowIso() });
 }
 
 export async function GET(req: Request) {
-  return POST(req);
+  return await POST(req);
 }

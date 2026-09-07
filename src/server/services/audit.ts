@@ -1,7 +1,7 @@
 import "server-only";
 import { run, uid } from "@/server/db";
 
-export function audit(params: {
+export async function audit(params: {
   merchantId?: string | null;
   actorId?: string | null;
   actorLabel?: string | null;
@@ -11,7 +11,7 @@ export function audit(params: {
   ip?: string | null;
   metadata?: unknown;
 }) {
-  run(
+  await run(
     `INSERT INTO audit_logs (id, merchant_id, actor_id, actor_label, action, resource, resource_id, ip, metadata)
      VALUES (?,?,?,?,?,?,?,?,?)`,
     [
@@ -28,7 +28,7 @@ export function audit(params: {
   );
 }
 
-export function apiLog(params: {
+export async function apiLog(params: {
   merchantId?: string | null;
   service: string;
   operation: string;
@@ -37,7 +37,7 @@ export function apiLog(params: {
   durationMs?: number | null;
   error?: string | null;
 }) {
-  run(
+  await run(
     `INSERT INTO api_logs (id, merchant_id, service, operation, status_code, ok, duration_ms, error)
      VALUES (?,?,?,?,?,?,?,?)`,
     [

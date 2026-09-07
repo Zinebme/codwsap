@@ -16,9 +16,9 @@ function pct(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
 }
 
-export function merchantKpis(merchantId: string, range: Range) {
+export async function merchantKpis(merchantId: string, range: Range) {
   const params = [merchantId, range.from, `${range.to} 23:59:59`];
-  const o = get<{
+  const o = await get<{
     total: number;
     confirmed: number;
     cancelled: number;
@@ -42,7 +42,7 @@ export function merchantKpis(merchantId: string, range: Range) {
     params,
   );
 
-  const m = get<{ sent: number; delivered: number; read: number; failed: number; inbound: number; optouts: number }>(
+  const m = await get<{ sent: number; delivered: number; read: number; failed: number; inbound: number; optouts: number }>(
     `SELECT
        SUM(CASE WHEN direction='outbound' AND status IN ('sent','delivered','read') THEN 1 ELSE 0 END) AS sent,
        SUM(CASE WHEN direction='outbound' AND status IN ('delivered','read') THEN 1 ELSE 0 END) AS delivered,
@@ -54,20 +54,20 @@ export function merchantKpis(merchantId: string, range: Range) {
     params,
   );
 
-  const optouts = get<{ c: number }>(
+  const optouts = (await get<{ c: number }>(
     "SELECT COUNT(*) AS c FROM customer_consents WHERE merchant_id = ? AND action = 'opt_out' AND created_at >= ? AND created_at <= ?",
     params,
-  )?.c ?? 0;
+  ))?.c ?? 0;
 
-  const suppressed = get<{ c: number }>(
+  const suppressed = (await get<{ c: number }>(
     "SELECT COUNT(*) AS c FROM automation_runs WHERE merchant_id = ? AND result = 'suppressed' AND created_at >= ? AND created_at <= ?",
     params,
-  )?.c ?? 0;
+  ))?.c ?? 0;
 
-  const duplicatesPrevented = get<{ c: number }>(
+  const duplicatesPrevented = (await get<{ c: number }>(
     "SELECT COUNT(*) AS c FROM automation_runs WHERE merchant_id = ? AND result = 'suppressed' AND reason = 'duplicate' AND created_at >= ? AND created_at <= ?",
     params,
-  )?.c ?? 0;
+  ))?.c ?? 0;
 
   const orders = o?.total ?? 0;
   const outbound = (m?.sent ?? 0) + (m?.failed ?? 0);
@@ -102,8 +102,8 @@ export function merchantKpis(merchantId: string, range: Range) {
   };
 }
 
-export function ordersByDay(merchantId: string, range: Range) {
-  return all<{ day: string; orders: number; delivered: number; returned: number; confirmed: number }>(
+export async function ordersByDay(merchantId: string, range: Range) {
+  return await all<{ day: string; orders: number; delivered: number; returned: number; confirmed: number }>(
     `SELECT substr(created_at,1,10) AS day,
        COUNT(*) AS orders,
        SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END) AS delivered,
@@ -115,8 +115,8 @@ export function ordersByDay(merchantId: string, range: Range) {
   );
 }
 
-export function messagesByDay(merchantId: string, range: Range) {
-  return all<{ day: string; sent: number; failed: number; inbound: number }>(
+export async function messagesByDay(merchantId: string, range: Range) {
+  return await all<{ day: string; sent: number; failed: number; inbound: number }>(
     `SELECT substr(created_at,1,10) AS day,
        SUM(CASE WHEN direction='outbound' AND status IN ('sent','delivered','read') THEN 1 ELSE 0 END) AS sent,
        SUM(CASE WHEN direction='outbound' AND status IN ('failed','rejected') THEN 1 ELSE 0 END) AS failed,
@@ -127,8 +127,8 @@ export function messagesByDay(merchantId: string, range: Range) {
   );
 }
 
-export function templatePerformance(merchantId: string, range: Range) {
-  return all<{
+export async function templatePerformance(merchantId: string, range: Range) {
+  return await all<{
     template_id: string;
     name: string;
     category: string;
@@ -152,7 +152,7 @@ export function templatePerformance(merchantId: string, range: Range) {
 
 export type QualityBadge = "good" | "monitor" | "at_risk";
 
-export function qualityAssessment(kpi: ReturnType<typeof merchantKpis>) {
+export function qualityAssessment(kpi: Awaited<ReturnType<typeof merchantKpis>>) {
   const recommendations: { level: QualityBadge; text: string }[] = [];
   let badge: QualityBadge = "good";
 
@@ -180,21 +180,21 @@ export function qualityAssessment(kpi: ReturnType<typeof merchantKpis>) {
   return { badge, recommendations };
 }
 
-export function superAdminKpis() {
-  const merchants = get<{ total: number; active: number; trial: number; suspended: number }>(
+export async function superAdminKpis() {
+  const merchants = await get<{ total: number; active: number; trial: number; suspended: number }>(
     `SELECT COUNT(*) AS total,
       SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active,
       SUM(CASE WHEN status='trial' THEN 1 ELSE 0 END) AS trial,
       SUM(CASE WHEN status='suspended' THEN 1 ELSE 0 END) AS suspended
      FROM merchants`,
   );
-  const orders = get<{ c: number }>("SELECT COUNT(*) AS c FROM orders")?.c ?? 0;
-  const messages = get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_messages WHERE direction='outbound'")?.c ?? 0;
-  const failedMessages = get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_messages WHERE status IN ('failed','rejected')")?.c ?? 0;
-  const deliveryCalls = get<{ c: number }>("SELECT COUNT(*) AS c FROM api_logs WHERE service LIKE 'delivery:%'")?.c ?? 0;
-  const integrationErrors = get<{ c: number }>("SELECT COUNT(*) AS c FROM api_logs WHERE ok = 0")?.c ?? 0;
-  const webhookErrors = get<{ c: number }>("SELECT COUNT(*) AS c FROM webhook_events WHERE status = 'failed'")?.c ?? 0;
-  const automationFailures = get<{ c: number }>("SELECT COUNT(*) AS c FROM automation_runs WHERE result = 'failed'")?.c ?? 0;
+  const orders = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM orders"))?.c ?? 0;
+  const messages = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_messages WHERE direction='outbound'"))?.c ?? 0;
+  const failedMessages = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM whatsapp_messages WHERE status IN ('failed','rejected')"))?.c ?? 0;
+  const deliveryCalls = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM api_logs WHERE service LIKE 'delivery:%'"))?.c ?? 0;
+  const integrationErrors = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM api_logs WHERE ok = 0"))?.c ?? 0;
+  const webhookErrors = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM webhook_events WHERE status = 'failed'"))?.c ?? 0;
+  const automationFailures = (await get<{ c: number }>("SELECT COUNT(*) AS c FROM automation_runs WHERE result = 'failed'"))?.c ?? 0;
   return {
     merchants: merchants?.total ?? 0,
     active: merchants?.active ?? 0,

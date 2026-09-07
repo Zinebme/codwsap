@@ -18,11 +18,11 @@ type Automation = {
   delay_minutes: number;
 };
 
-export function getAutomation(merchantId: string, type: AutomationType): Automation | undefined {
-  return get<Automation>("SELECT * FROM automations WHERE merchant_id = ? AND type = ?", [merchantId, type]);
+export async function getAutomation(merchantId: string, type: AutomationType): Promise<Automation | undefined> {
+  return await get<Automation>("SELECT * FROM automations WHERE merchant_id = ? AND type = ?", [merchantId, type]);
 }
 
-export function seedAutomations(merchantId: string) {
+export async function seedAutomations(merchantId: string) {
   const defaults: { type: AutomationType; cooldown: number; delay: number; enabled: number }[] = [
     { type: "new_order_confirmation", cooldown: 0, delay: 0, enabled: 1 },
     { type: "reply_yes_confirm", cooldown: 0, delay: 0, enabled: 1 },
@@ -35,7 +35,7 @@ export function seedAutomations(merchantId: string) {
     { type: "failed_message_alert", cooldown: 0, delay: 0, enabled: 1 },
   ];
   for (const d of defaults) {
-    run(
+    await run(
       `INSERT OR IGNORE INTO automations (id, merchant_id, type, name, enabled, cooldown_minutes, delay_minutes)
        VALUES (?,?,?,?,?,?,?)`,
       [uid("atm"), merchantId, d.type, AUTOMATION_META[d.type].fr, d.enabled, d.cooldown, d.delay],
@@ -73,8 +73,8 @@ function orderVariables(order: OrderRow): Record<string, string> {
   };
 }
 
-function logRun(merchantId: string, automationId: string | null, orderId: string | null, trigger: string, result: string, reason?: string) {
-  run("INSERT INTO automation_runs (id, merchant_id, automation_id, order_id, trigger, result, reason) VALUES (?,?,?,?,?,?,?)", [
+async function logRun(merchantId: string, automationId: string | null, orderId: string | null, trigger: string, result: string, reason?: string) {
+  await run("INSERT INTO automation_runs (id, merchant_id, automation_id, order_id, trigger, result, reason) VALUES (?,?,?,?,?,?,?)", [
     uid("run"),
     merchantId,
     automationId,
@@ -84,7 +84,7 @@ function logRun(merchantId: string, automationId: string | null, orderId: string
     reason ?? null,
   ]);
   if (automationId) {
-    run(
+    await run(
       `UPDATE automations SET last_run_at = ?, last_status = ?, run_count = run_count + 1,
         failure_count = failure_count + CASE WHEN ? = 'failed' THEN 1 ELSE 0 END WHERE id = ?`,
       [nowIso(), result, result, automationId],
@@ -92,19 +92,19 @@ function logRun(merchantId: string, automationId: string | null, orderId: string
   }
 }
 
-function runOrderAutomation(type: AutomationType, order: OrderRow, trigger: string) {
-  const automation = getAutomation(order.merchant_id, type);
+async function runOrderAutomation(type: AutomationType, order: OrderRow, trigger: string) {
+  const automation = await getAutomation(order.merchant_id, type);
   if (!automation) return;
   if (!automation.enabled) {
-    logRun(order.merchant_id, automation.id, order.id, trigger, "skipped", "automation_disabled");
+    await logRun(order.merchant_id, automation.id, order.id, trigger, "skipped", "automation_disabled");
     return;
   }
   if (!order.normalized_phone) {
-    logRun(order.merchant_id, automation.id, order.id, trigger, "skipped", "no_phone");
+    await logRun(order.merchant_id, automation.id, order.id, trigger, "skipped", "no_phone");
     return;
   }
-  const templateId = automation.template_id ?? defaultTemplateFor(order.merchant_id, type);
-  const outcome = queueMessage({
+  const templateId = automation.template_id ?? await defaultTemplateFor(order.merchant_id, type);
+  const outcome = await queueMessage({
     merchantId: order.merchant_id,
     orderId: order.id,
     customerId: order.customer_id,
@@ -116,15 +116,15 @@ function runOrderAutomation(type: AutomationType, order: OrderRow, trigger: stri
     isTest: !!order.is_test,
     cooldownMinutes: automation.cooldown_minutes,
   });
-  if (outcome.status === "queued") logRun(order.merchant_id, automation.id, order.id, trigger, "sent");
+  if (outcome.status === "queued") await logRun(order.merchant_id, automation.id, order.id, trigger, "sent");
   else if (outcome.status === "suppressed") {
     // queueMessage already logged the suppression details
-    run("UPDATE automations SET last_run_at = ?, last_status = 'suppressed' WHERE id = ?", [nowIso(), automation.id]);
-  } else logRun(order.merchant_id, automation.id, order.id, trigger, "failed", outcome.error);
+    await run("UPDATE automations SET last_run_at = ?, last_status = 'suppressed' WHERE id = ?", [nowIso(), automation.id]);
+  } else await logRun(order.merchant_id, automation.id, order.id, trigger, "failed", outcome.error);
 }
 
-function defaultTemplateFor(merchantId: string, type: AutomationType): string | null {
-  const row = get<{ id: string }>(
+async function defaultTemplateFor(merchantId: string, type: AutomationType): Promise<string | null> {
+  const row = await get<{ id: string }>(
     "SELECT id FROM whatsapp_templates WHERE merchant_id = ? AND event_key = ? AND status = 'approved' ORDER BY updated_at DESC LIMIT 1",
     [merchantId, type],
   );
@@ -133,10 +133,10 @@ function defaultTemplateFor(merchantId: string, type: AutomationType): string | 
 
 /* ------------------------------- Triggers -------------------------------- */
 
-export function onNewOrder(orderId: string) {
-  const order = get<OrderRow>("SELECT * FROM orders WHERE id = ?", [orderId]);
+export async function onNewOrder(orderId: string) {
+  const order = await get<OrderRow>("SELECT * FROM orders WHERE id = ?", [orderId]);
   if (!order) return;
-  notify({
+  await notify({
     merchantId: order.merchant_id,
     type: "new_order",
     severity: "info",
@@ -144,12 +144,12 @@ export function onNewOrder(orderId: string) {
     body: `${order.customer_name ?? "Client"} — ${formatDzd(order.total)}`,
     link: `/dashboard/orders?order=${order.id}`,
   });
-  runOrderAutomation("new_order_confirmation", order, "order.created");
+  await runOrderAutomation("new_order_confirmation", order, "order.created");
 
   // Schedule the single no-response reminder.
-  const reminder = getAutomation(order.merchant_id, "no_response_reminder");
+  const reminder = await getAutomation(order.merchant_id, "no_response_reminder");
   if (reminder?.enabled) {
-    enqueueJob({
+    await enqueueJob({
       merchantId: order.merchant_id,
       type: "reminder",
       payload: { orderId: order.id },
@@ -158,18 +158,18 @@ export function onNewOrder(orderId: string) {
   }
 }
 
-export function onCustomerReply(orderId: string | null, merchantId: string, classification: "yes" | "no" | "other") {
+export async function onCustomerReply(orderId: string | null, merchantId: string, classification: "yes" | "no" | "other") {
   if (!orderId) return;
-  const order = get<OrderRow>("SELECT * FROM orders WHERE id = ? AND merchant_id = ?", [orderId, merchantId]);
+  const order = await get<OrderRow>("SELECT * FROM orders WHERE id = ? AND merchant_id = ?", [orderId, merchantId]);
   if (!order) return;
 
   if (classification === "yes") {
-    const a = getAutomation(merchantId, "reply_yes_confirm");
+    const a = await getAutomation(merchantId, "reply_yes_confirm");
     if (a?.enabled && ["new", "awaiting_confirmation", "no_response", "postponed"].includes(order.status)) {
-      run("UPDATE orders SET status = 'confirmed', confirmed_at = ?, updated_at = ?, attention = 0 WHERE id = ?", [nowIso(), nowIso(), order.id]);
-      addOrderEvent(merchantId, order.id, "automation", "Commande confirmée automatiquement", "Le client a répondu OUI sur WhatsApp.");
-      logRun(merchantId, a.id, order.id, "customer.reply_yes", "sent");
-      notify({
+      await run("UPDATE orders SET status = 'confirmed', confirmed_at = ?, updated_at = ?, attention = 0 WHERE id = ?", [nowIso(), nowIso(), order.id]);
+      await addOrderEvent(merchantId, order.id, "automation", "Commande confirmée automatiquement", "Le client a répondu OUI sur WhatsApp.");
+      await logRun(merchantId, a.id, order.id, "customer.reply_yes", "sent");
+      await notify({
         merchantId,
         type: "order_confirmed",
         severity: "success",
@@ -178,12 +178,12 @@ export function onCustomerReply(orderId: string | null, merchantId: string, clas
       });
     }
   } else if (classification === "no") {
-    const a = getAutomation(merchantId, "reply_no_cancel");
+    const a = await getAutomation(merchantId, "reply_no_cancel");
     if (a?.enabled && !["delivered", "shipped", "returned"].includes(order.status)) {
-      run("UPDATE orders SET status = 'cancelled_by_customer', updated_at = ? WHERE id = ?", [nowIso(), order.id]);
-      addOrderEvent(merchantId, order.id, "automation", "Commande annulée automatiquement", "Le client a répondu NON sur WhatsApp.");
-      logRun(merchantId, a.id, order.id, "customer.reply_no", "sent");
-      notify({
+      await run("UPDATE orders SET status = 'cancelled_by_customer', updated_at = ? WHERE id = ?", [nowIso(), order.id]);
+      await addOrderEvent(merchantId, order.id, "automation", "Commande annulée automatiquement", "Le client a répondu NON sur WhatsApp.");
+      await logRun(merchantId, a.id, order.id, "customer.reply_no", "sent");
+      await notify({
         merchantId,
         type: "order_cancelled",
         severity: "warning",
@@ -198,8 +198,8 @@ export function onCustomerReply(orderId: string | null, merchantId: string, clas
  * Delivery status change → decide whether the customer really needs a message.
  * Courier internal transitions never generate customer messages.
  */
-export function onDeliveryStatusChange(orderId: string, merchantId: string, normalized: DeliveryStatus, rawStatus: string) {
-  const order = get<OrderRow>("SELECT * FROM orders WHERE id = ? AND merchant_id = ?", [orderId, merchantId]);
+export async function onDeliveryStatusChange(orderId: string, merchantId: string, normalized: DeliveryStatus, rawStatus: string) {
+  const order = await get<OrderRow>("SELECT * FROM orders WHERE id = ? AND merchant_id = ?", [orderId, merchantId]);
   if (!order) return;
 
   const statusToOrderStatus: Partial<Record<DeliveryStatus, string>> = {
@@ -212,20 +212,20 @@ export function onDeliveryStatusChange(orderId: string, merchantId: string, norm
     returned: "returned",
   };
   const mapped = statusToOrderStatus[normalized];
-  if (mapped) run("UPDATE orders SET status = ?, delivery_status = ?, updated_at = ? WHERE id = ?", [mapped, normalized, nowIso(), orderId]);
-  else run("UPDATE orders SET delivery_status = ?, updated_at = ? WHERE id = ?", [normalized, nowIso(), orderId]);
+  if (mapped) await run("UPDATE orders SET status = ?, delivery_status = ?, updated_at = ? WHERE id = ?", [mapped, normalized, nowIso(), orderId]);
+  else await run("UPDATE orders SET delivery_status = ?, updated_at = ? WHERE id = ?", [normalized, nowIso(), orderId]);
 
-  addOrderEvent(merchantId, orderId, "delivery", `Statut transporteur : ${rawStatus}`, `Normalisé : ${normalized}`);
+  await addOrderEvent(merchantId, orderId, "delivery", `Statut transporteur : ${rawStatus}`, `Normalisé : ${normalized}`);
 
   if (normalized === "at_agency") {
-    notify({ merchantId, type: "parcel_at_office", severity: "info", title: `Colis ${order.reference} arrivé au bureau`, link: `/dashboard/orders?order=${orderId}` });
+    await notify({ merchantId, type: "parcel_at_office", severity: "info", title: `Colis ${order.reference} arrivé au bureau`, link: `/dashboard/orders?order=${orderId}` });
   }
   if (normalized === "delivery_failed") {
-    run("UPDATE orders SET attention = 1 WHERE id = ?", [orderId]);
-    notify({ merchantId, type: "delivery_failed", severity: "error", title: `Échec de livraison — ${order.reference}`, link: `/dashboard/orders?order=${orderId}` });
+    await run("UPDATE orders SET attention = 1 WHERE id = ?", [orderId]);
+    await notify({ merchantId, type: "delivery_failed", severity: "error", title: `Échec de livraison — ${order.reference}`, link: `/dashboard/orders?order=${orderId}` });
   }
   if (normalized === "returned") {
-    notify({ merchantId, type: "parcel_returned", severity: "warning", title: `Colis retourné — ${order.reference}`, link: `/dashboard/orders?order=${orderId}` });
+    await notify({ merchantId, type: "parcel_returned", severity: "warning", title: `Colis retourné — ${order.reference}`, link: `/dashboard/orders?order=${orderId}` });
   }
 
   if (!isCustomerRelevantDeliveryStatus(normalized)) return;
@@ -237,19 +237,19 @@ export function onDeliveryStatusChange(orderId: string, merchantId: string, norm
     delivered: "delivered_thanks",
   };
   const type = map[normalized];
-  if (type) runOrderAutomation(type, { ...order, status: mapped ?? order.status }, `delivery.${normalized}`);
+  if (type) await runOrderAutomation(type, { ...order, status: mapped ?? order.status }, `delivery.${normalized}`);
 }
 
-export function runNoResponseReminder(orderId: string) {
-  const order = get<OrderRow & { last_reply_at: string | null }>("SELECT * FROM orders WHERE id = ?", [orderId]);
+export async function runNoResponseReminder(orderId: string) {
+  const order = await get<OrderRow & { last_reply_at: string | null }>("SELECT * FROM orders WHERE id = ?", [orderId]);
   if (!order) return;
   if (order.last_reply_at) return; // customer answered
   if (!["new", "awaiting_confirmation"].includes(order.status)) return;
-  run("UPDATE orders SET status = 'no_response', attention = 1, updated_at = ? WHERE id = ? AND status IN ('new','awaiting_confirmation')", [nowIso(), orderId]);
-  runOrderAutomation("no_response_reminder", order, "order.no_response");
+  await run("UPDATE orders SET status = 'no_response', attention = 1, updated_at = ? WHERE id = ? AND status IN ('new','awaiting_confirmation')", [nowIso(), orderId]);
+  await runOrderAutomation("no_response_reminder", order, "order.no_response");
 }
 
-export function addOrderEvent(
+export async function addOrderEvent(
   merchantId: string,
   orderId: string,
   type: string,
@@ -258,14 +258,14 @@ export function addOrderEvent(
   actor?: { id?: string | null; label?: string | null },
   metadata?: unknown,
 ) {
-  run(
+  await run(
     "INSERT INTO order_events (id, merchant_id, order_id, type, title, description, actor_id, actor_label, metadata) VALUES (?,?,?,?,?,?,?,?,?)",
     [uid("evt"), merchantId, orderId, type, title, description ?? null, actor?.id ?? null, actor?.label ?? null, metadata ? JSON.stringify(metadata) : null],
   );
 }
 
-export function scheduleDeliveryPolling(merchantId: string) {
-  enqueueJob({ merchantId, type: "poll_delivery", payload: {}, runAfter: new Date(Date.now() + 60_000) });
+export async function scheduleDeliveryPolling(merchantId: string) {
+  await enqueueJob({ merchantId, type: "poll_delivery", payload: {}, runAfter: new Date(Date.now() + 60_000) });
 }
 
 export { toSql };

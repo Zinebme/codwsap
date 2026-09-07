@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     const p = url.searchParams;
     const multi = (k: string) => p.getAll(k).flatMap((v) => v.split(",")).filter(Boolean);
 
-    const result = listOrders({
+    const result = await listOrders({
       merchantId: ctx.merchantId,
       q: p.get("q") ?? undefined,
       status: multi("status"),
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     const body = await parseBody(req, createSchema);
 
     const productsPrice = body.items.length ? body.items.reduce((a, i) => a + i.quantity * i.unit_price, 0) : body.productsPrice;
-    const res = createOrder({
+    const res = await createOrder({
       merchantId: ctx.merchantId,
       customerName: body.customerName,
       phone: body.phone,
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
       isTest: body.isTest,
       source: "manual",
     });
-    audit({
+    await audit({
       merchantId: ctx.merchantId,
       actorId: ctx.user.id,
       actorLabel: ctx.user.email,

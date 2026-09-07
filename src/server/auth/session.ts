@@ -51,7 +51,7 @@ export async function destroySession() {
   if (token) {
     try {
       const { payload } = await jwtVerify(token, SECRET);
-      if (payload.jti) run("INSERT OR IGNORE INTO sessions_revoked (jti) VALUES (?)", [payload.jti]);
+      if (payload.jti) await run("INSERT OR IGNORE INTO sessions_revoked (jti) VALUES (?)", [payload.jti]);
     } catch {
       /* ignore */
     }
@@ -65,8 +65,8 @@ export async function currentUser(): Promise<SessionUser | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, SECRET);
-    if (payload.jti && get("SELECT jti FROM sessions_revoked WHERE jti = ?", [payload.jti])) return null;
-    const user = get<SessionUser & { is_active: number }>(
+    if (payload.jti && await get("SELECT jti FROM sessions_revoked WHERE jti = ?", [payload.jti])) return null;
+    const user = await get<SessionUser & { is_active: number }>(
       "SELECT id, email, full_name, is_super_admin, is_active FROM users WHERE id = ?",
       [payload.sub as string],
     );
@@ -77,8 +77,8 @@ export async function currentUser(): Promise<SessionUser | null> {
   }
 }
 
-export function membershipsFor(userId: string): Membership[] {
-  return all<Membership>(
+export async function membershipsFor(userId: string): Promise<Membership[]> {
+  return await all<Membership>(
     `SELECT mu.merchant_id, mu.role, m.name AS merchant_name, m.status AS merchant_status
      FROM merchant_users mu JOIN merchants m ON m.id = mu.merchant_id
      WHERE mu.user_id = ? AND mu.status = 'active' ORDER BY mu.created_at`,
@@ -118,11 +118,11 @@ export async function requireTenant(): Promise<TenantContext> {
 
   const jar = await cookies();
   const preferred = jar.get("codwsap_merchant")?.value;
-  const memberships = membershipsFor(user.id);
+  const memberships = await membershipsFor(user.id);
   if (memberships.length === 0) throw new HttpError(403, "Aucun espace marchand associé à ce compte.", "no_tenant");
 
   const chosen = memberships.find((m) => m.merchant_id === preferred) ?? memberships[0];
-  const merchant = get<TenantContext["merchant"]>(
+  const merchant = await get<TenantContext["merchant"]>(
     "SELECT id, name, status, plan_code, locale, onboarding_step, onboarding_completed_at FROM merchants WHERE id = ?",
     [chosen.merchant_id],
   );

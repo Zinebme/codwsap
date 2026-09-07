@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const ctx = await requirePermission("integrations.read");
-    const conn = get<{
+    const conn = await get<{
       id: string;
       display_phone: string | null;
       phone_number_id: string | null;
@@ -57,7 +57,7 @@ export async function PUT(req: Request) {
   try {
     const ctx = await requirePermission("integrations.write");
     const body = await parseBody(req, schema);
-    const existing = get<{ id: string; credentials_encrypted: string | null; webhook_verify_token: string | null }>(
+    const existing = await get<{ id: string; credentials_encrypted: string | null; webhook_verify_token: string | null }>(
       "SELECT id, credentials_encrypted, webhook_verify_token FROM whatsapp_connections WHERE merchant_id = ?",
       [ctx.merchantId],
     );
@@ -65,18 +65,18 @@ export async function PUT(req: Request) {
     const verifyToken = existing?.webhook_verify_token ?? randomToken(16);
 
     if (existing) {
-      run(
+      await run(
         `UPDATE whatsapp_connections SET display_phone = ?, phone_number_id = ?, business_account_id = ?, credentials_encrypted = ?, updated_at = ? WHERE id = ?`,
         [body.displayPhone, body.phoneNumberId, body.businessAccountId, creds, nowIso(), existing.id],
       );
     } else {
-      run(
+      await run(
         `INSERT INTO whatsapp_connections (id, merchant_id, provider, display_phone, phone_number_id, business_account_id, credentials_encrypted, webhook_verify_token, webhook_secret, status)
          VALUES (?,?, 'meta_cloud', ?,?,?,?,?,?, 'disconnected')`,
         [uid("wac"), ctx.merchantId, body.displayPhone, body.phoneNumberId, body.businessAccountId, creds, verifyToken, randomToken(24)],
       );
     }
-    audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.credentials_changed", resource: "whatsapp", ip: await clientIp() });
+    await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "integration.credentials_changed", resource: "whatsapp", ip: await clientIp() });
     return ok({ ok: true });
   } catch (e) {
     return jsonError(e);
@@ -87,7 +87,7 @@ export async function PUT(req: Request) {
 export async function POST() {
   try {
     const ctx = await requirePermission("integrations.write");
-    const conn = get<{ id: string; phone_number_id: string | null; credentials_encrypted: string | null }>(
+    const conn = await get<{ id: string; phone_number_id: string | null; credentials_encrypted: string | null }>(
       "SELECT id, phone_number_id, credentials_encrypted FROM whatsapp_connections WHERE merchant_id = ?",
       [ctx.merchantId],
     );
@@ -102,24 +102,24 @@ export async function POST() {
         signal: AbortSignal.timeout(12000),
       });
       const json = (await res.json().catch(() => ({}))) as { quality_rating?: string; error?: { message?: string } };
-      apiLog({ merchantId: ctx.merchantId, service: "whatsapp", operation: "test_connection", statusCode: res.status, ok: res.ok, durationMs: Date.now() - started, error: res.ok ? null : json.error?.message });
+      await apiLog({ merchantId: ctx.merchantId, service: "whatsapp", operation: "test_connection", statusCode: res.status, ok: res.ok, durationMs: Date.now() - started, error: res.ok ? null : json.error?.message });
       if (!res.ok) {
-        run("UPDATE whatsapp_connections SET status = 'error', last_error = ?, last_error_at = ? WHERE id = ?", [
+        await run("UPDATE whatsapp_connections SET status = 'error', last_error = ?, last_error_at = ? WHERE id = ?", [
           json.error?.message ?? "Identifiants refusés",
           nowIso(),
           conn.id,
         ]);
         return ok({ ok: false, message: "Connexion WhatsApp interrompue. Vérifiez vos identifiants.", technical: json.error?.message });
       }
-      run("UPDATE whatsapp_connections SET status = 'connected', quality_rating = ?, meta_metrics = ?, last_error = NULL WHERE id = ?", [
+      await run("UPDATE whatsapp_connections SET status = 'connected', quality_rating = ?, meta_metrics = ?, last_error = NULL WHERE id = ?", [
         json.quality_rating ?? null,
         JSON.stringify(json),
         conn.id,
       ]);
       return ok({ ok: true, message: "Connexion WhatsApp validée.", qualityRating: json.quality_rating ?? null });
     } catch (err) {
-      apiLog({ merchantId: ctx.merchantId, service: "whatsapp", operation: "test_connection", ok: false, durationMs: Date.now() - started, error: (err as Error).message });
-      run("UPDATE whatsapp_connections SET status = 'error', last_error = ?, last_error_at = ? WHERE id = ?", ["Réseau indisponible", nowIso(), conn.id]);
+      await apiLog({ merchantId: ctx.merchantId, service: "whatsapp", operation: "test_connection", ok: false, durationMs: Date.now() - started, error: (err as Error).message });
+      await run("UPDATE whatsapp_connections SET status = 'error', last_error = ?, last_error_at = ? WHERE id = ?", ["Réseau indisponible", nowIso(), conn.id]);
       return ok({ ok: false, message: "Impossible de joindre l'API WhatsApp pour le moment.", technical: (err as Error).message });
     }
   } catch (e) {

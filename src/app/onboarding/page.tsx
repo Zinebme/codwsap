@@ -84,7 +84,7 @@ export default function OnboardingPage() {
           return (
             <button
               key={s.id}
-              onClick={() => goto(s.id)}
+              onClick={async () => await goto(s.id)}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px]",
                 step === s.id ? "border-brand-300 bg-brand-50 font-medium text-brand-700" : done ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-ink-200 bg-white text-ink-500",
@@ -119,7 +119,7 @@ export default function OnboardingPage() {
               setBusy(false);
               if (!res.ok) return push({ variant: "error", title: "Erreur" });
               mutate();
-              goto(2);
+              await goto(2);
             }}
           >
             <div className="grid gap-3 sm:grid-cols-2">
@@ -229,9 +229,9 @@ export default function OnboardingPage() {
         )}
 
         <div className="mt-5 flex items-center justify-between border-t border-ink-100 pt-4">
-          <Button size="sm" disabled={step === 1} onClick={() => goto(step - 1)}><ArrowLeft className="h-3.5 w-3.5 rtl:rotate-180" /> {ar ? "السابق" : "Précédent"}</Button>
+          <Button size="sm" disabled={step === 1} onClick={async () => await goto(step - 1)}><ArrowLeft className="h-3.5 w-3.5 rtl:rotate-180" /> {ar ? "السابق" : "Précédent"}</Button>
           {step < 8 && (
-            <Button size="sm" onClick={() => goto(step + 1)}>
+            <Button size="sm" onClick={async () => await goto(step + 1)}>
               {cur.optional ? <><SkipForward className="h-3.5 w-3.5" /> {ar ? "تخطي" : "Passer"}</> : <>{ar ? "التالي" : "Suivant"} <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" /></>}
             </Button>
           )}

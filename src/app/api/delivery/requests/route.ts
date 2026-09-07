@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requirePermission("delivery.write");
     const body = await parseBody(req, schema);
-    run("INSERT INTO provider_requests (id, merchant_id, provider_name, contact, details) VALUES (?,?,?,?,?)", [
+    await run("INSERT INTO provider_requests (id, merchant_id, provider_name, contact, details) VALUES (?,?,?,?,?)", [
       uid("prq"), ctx.merchantId, body.providerName, body.contact ?? null, body.details ?? null,
     ]);
     return ok({ ok: true }, { status: 201 });

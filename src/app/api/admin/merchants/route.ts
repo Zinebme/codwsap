@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     }
     const whereSql = where.join(" AND ");
 
-    const rows = all(
+    const rows = await all(
       `SELECT m.*,
         (SELECT u.full_name FROM merchant_users mu JOIN users u ON u.id = mu.user_id WHERE mu.merchant_id = m.id AND mu.role = 'owner' LIMIT 1) AS owner_name,
         (SELECT COUNT(*) FROM orders o WHERE o.merchant_id = m.id) AS orders_count,
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
        FROM merchants m WHERE ${whereSql} ORDER BY m.created_at DESC LIMIT ? OFFSET ?`,
       [...params, pageSize, (page - 1) * pageSize],
     );
-    const total = get<{ c: number }>(`SELECT COUNT(*) AS c FROM merchants m WHERE ${whereSql}`, params)?.c ?? 0;
+    const total = (await get<{ c: number }>(`SELECT COUNT(*) AS c FROM merchants m WHERE ${whereSql}`, params))?.c ?? 0;
     return ok({ rows, total, page, pages: Math.max(1, Math.ceil(total / pageSize)) });
   } catch (e) {
     return jsonError(e);

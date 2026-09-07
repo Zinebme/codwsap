@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const ctx = await requirePermission("orders.read");
     const { id } = await params;
-    const detail = orderDetail(ctx.merchantId, id);
+    const detail = await orderDetail(ctx.merchantId, id);
     if (!detail) throw new HttpError(404, "Commande introuvable.", "not_found");
     return ok(detail);
   } catch (e) {
@@ -40,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const ctx = await requirePermission("orders.write");
     const { id } = await params;
-    const order = get<{
+    const order = await get<{
       id: string;
       customer_id: string | null;
       normalized_phone: string | null;
@@ -57,40 +57,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     switch (body.action) {
       case "set_status": {
-        run("UPDATE orders SET status = ?, updated_at = ?, attention = CASE WHEN ? IN ('delivered','confirmed') THEN 0 ELSE attention END WHERE id = ?", [
+        await run("UPDATE orders SET status = ?, updated_at = ?, attention = CASE WHEN ? IN ('delivered','confirmed') THEN 0 ELSE attention END WHERE id = ?", [
           body.status,
           nowIso(),
           body.status,
           id,
         ]);
-        if (body.status === "confirmed") run("UPDATE orders SET confirmed_at = ? WHERE id = ?", [nowIso(), id]);
-        addOrderEvent(ctx.merchantId, id, "status_change", `Statut : ${body.status}`, undefined, actor);
-        if (order.customer_id) recomputeCustomerStats(order.customer_id);
-        audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "order.status_changed", resource: "order", resourceId: id, ip, metadata: { status: body.status } });
+        if (body.status === "confirmed") await run("UPDATE orders SET confirmed_at = ? WHERE id = ?", [nowIso(), id]);
+        await addOrderEvent(ctx.merchantId, id, "status_change", `Statut : ${body.status}`, undefined, actor);
+        if (order.customer_id) await recomputeCustomerStats(order.customer_id);
+        await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "order.status_changed", resource: "order", resourceId: id, ip, metadata: { status: body.status } });
         return ok({ ok: true });
       }
       case "note": {
-        run("UPDATE orders SET notes = ?, updated_at = ? WHERE id = ?", [body.note, nowIso(), id]);
-        addOrderEvent(ctx.merchantId, id, "note", "Note interne ajoutée", body.note, actor);
+        await run("UPDATE orders SET notes = ?, updated_at = ? WHERE id = ?", [body.note, nowIso(), id]);
+        await addOrderEvent(ctx.merchantId, id, "note", "Note interne ajoutée", body.note, actor);
         return ok({ ok: true });
       }
       case "assign": {
         if (body.userId) {
-          const member = get("SELECT id FROM merchant_users WHERE merchant_id = ? AND user_id = ? AND status = 'active'", [ctx.merchantId, body.userId]);
+          const member = await get("SELECT id FROM merchant_users WHERE merchant_id = ? AND user_id = ? AND status = 'active'", [ctx.merchantId, body.userId]);
           if (!member) throw new HttpError(400, "Cet utilisateur ne fait pas partie de votre équipe.", "bad_request");
         }
-        run("UPDATE orders SET assigned_user_id = ?, updated_at = ? WHERE id = ?", [body.userId, nowIso(), id]);
-        addOrderEvent(ctx.merchantId, id, "manual_action", body.userId ? "Agent assigné" : "Agent retiré", undefined, actor);
+        await run("UPDATE orders SET assigned_user_id = ?, updated_at = ? WHERE id = ?", [body.userId, nowIso(), id]);
+        await addOrderEvent(ctx.merchantId, id, "manual_action", body.userId ? "Agent assigné" : "Agent retiré", undefined, actor);
         return ok({ ok: true });
       }
       case "postpone": {
-        run("UPDATE orders SET status = 'postponed', postponed_until = ?, updated_at = ? WHERE id = ?", [body.until, nowIso(), id]);
-        addOrderEvent(ctx.merchantId, id, "status_change", `Commande reportée au ${body.until}`, undefined, actor);
+        await run("UPDATE orders SET status = 'postponed', postponed_until = ?, updated_at = ? WHERE id = ?", [body.until, nowIso(), id]);
+        await addOrderEvent(ctx.merchantId, id, "status_change", `Commande reportée au ${body.until}`, undefined, actor);
         return ok({ ok: true });
       }
       case "send_message": {
         if (!order.normalized_phone) throw new HttpError(400, "Cette commande n'a pas de numéro valide.", "bad_request");
-        const outcome = queueMessage({
+        const outcome = await queueMessage({
           merchantId: ctx.merchantId,
           orderId: id,
           customerId: order.customer_id,
@@ -102,16 +102,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           isTest: !!order.is_test,
           variables: { "1": order.customer_name ?? "client", "2": order.reference },
         });
-        addOrderEvent(ctx.merchantId, id, "message", outcome.status === "suppressed" ? "Message bloqué par les règles qualité" : "Message WhatsApp envoyé", outcome.reason, actor);
+        await addOrderEvent(ctx.merchantId, id, "message", outcome.status === "suppressed" ? "Message bloqué par les règles qualité" : "Message WhatsApp envoyé", outcome.reason, actor);
         void runWorker(3);
         return ok(outcome);
       }
       case "resend_message": {
-        const msg = get<{ id: string; status: string }>("SELECT id, status FROM whatsapp_messages WHERE id = ? AND merchant_id = ? AND order_id = ?", [body.messageId, ctx.merchantId, id]);
+        const msg = await get<{ id: string; status: string }>("SELECT id, status FROM whatsapp_messages WHERE id = ? AND merchant_id = ? AND order_id = ?", [body.messageId, ctx.merchantId, id]);
         if (!msg) throw new HttpError(404, "Message introuvable.", "not_found");
-        run("UPDATE whatsapp_messages SET status = 'queued', error_message = NULL, error_code = NULL, dedupe_key = NULL WHERE id = ?", [msg.id]);
+        await run("UPDATE whatsapp_messages SET status = 'queued', error_message = NULL, error_code = NULL, dedupe_key = NULL WHERE id = ?", [msg.id]);
         const { enqueueJob } = await import("@/server/jobs/queue");
-        enqueueJob({ merchantId: ctx.merchantId, type: "send_whatsapp", payload: { messageId: msg.id } });
+        await enqueueJob({ merchantId: ctx.merchantId, type: "send_whatsapp", payload: { messageId: msg.id } });
         void runWorker(3);
         return ok({ ok: true });
       }
@@ -119,7 +119,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!ctx.can("delivery.write")) throw new HttpError(403, "Votre rôle ne permet pas d'envoyer au transporteur.", "forbidden");
         const res = await sendOrderToProvider(ctx.merchantId, id, body.connectionId);
         if (!res.ok) throw new HttpError(400, res.error, "delivery_error");
-        audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "order.sent_to_delivery", resource: "order", resourceId: id, ip });
+        await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "order.sent_to_delivery", resource: "order", resourceId: id, ip });
         return ok(res);
       }
       case "refresh_tracking": {
@@ -128,15 +128,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return ok(res);
       }
       case "update": {
-        run("UPDATE orders SET notes = COALESCE(?, notes), address = COALESCE(?, address), commune = COALESCE(?, commune), updated_at = ? WHERE id = ?", [
+        await run("UPDATE orders SET notes = COALESCE(?, notes), address = COALESCE(?, address), commune = COALESCE(?, commune), updated_at = ? WHERE id = ?", [
           body.notes ?? null,
           body.address ?? null,
           body.commune ?? null,
           nowIso(),
           id,
         ]);
-        addOrderEvent(ctx.merchantId, id, "manual_action", "Commande modifiée", undefined, actor);
-        audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "order.edited", resource: "order", resourceId: id, ip });
+        await addOrderEvent(ctx.merchantId, id, "manual_action", "Commande modifiée", undefined, actor);
+        await audit({ merchantId: ctx.merchantId, actorId: ctx.user.id, actorLabel: ctx.user.email, action: "order.edited", resource: "order", resourceId: id, ip });
         return ok({ ok: true });
       }
     }
