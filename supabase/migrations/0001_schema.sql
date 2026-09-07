@@ -507,7 +507,7 @@ CREATE TABLE IF NOT EXISTS sessions_revoked (
 -- Default plans (idempotent). Limits are enforced server-side.
 INSERT INTO plans (id, code, name, price_dzd, max_orders_month, max_messages_month, max_team_members, max_delivery_connections, max_automations, is_public, sort_order)
 VALUES
-  ('plan_trial',   'trial',   'Essai',   0,     200,   500,   2,  1, 9, 1, 1),
-  ('plan_starter', 'starter', 'Starter', 4900,  2000,  10000, 5,  2, 9, 1, 2),
-  ('plan_pro',     'pro',     'Pro',     9900,  10000, 50000, 15, 5, 9, 1, 3)
+  ('plan_trial',   'trial',   'Essai',   0,     200,   500,   2,  1, 9, true, 1),
+  ('plan_starter', 'starter', 'Starter', 4900,  2000,  10000, 5,  2, 9, true, 2),
+  ('plan_pro',     'pro',     'Pro',     9900,  10000, 50000, 15, 5, 9, true, 3)
 ON CONFLICT (code) DO NOTHING;
